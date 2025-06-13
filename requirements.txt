@@ -2,4 +2,3 @@ discord.py
 flask
 aiohttp
 os
-.gitignore 
