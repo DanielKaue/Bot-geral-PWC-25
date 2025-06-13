@@ -1,7 +1,4 @@
 discord.py
 flask
 aiohttp
-os
 asyncio
-re
-random
