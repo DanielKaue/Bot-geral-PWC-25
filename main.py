@@ -9,10 +9,6 @@ import re
 import asyncio
 
 
-cargo_mod1 = 1382505875549323349
-cargo_mod2 = 1382838597790470337
-cargo_geral = 1382505875549323346
-role_inscrito_name = "Inscrito"
 
 app = Flask('')
 
@@ -34,6 +30,65 @@ def keep_alive():
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+cargo_mod1 = 1382505875549323349
+cargo_mod2 = 1382838597790470337
+cargo_geral = 1382505875549323346
+role_inscrito_name = "Inscrito"
+
+def has_any_role(user_roles, role_ids):
+    return any(role.id in role_ids for role in user_roles)
+
+@bot.command()
+async def pix(ctx):
+    guild = ctx.guild
+    role_inscrito = discord.utils.get(guild.roles, name=role_inscrito_name)
+    user_roles = ctx.author.roles
+
+    # Verifica se tem cargo geral ou inscrito
+    allowed_roles = [cargo_geral]
+    if role_inscrito:
+        allowed_roles.append(role_inscrito.id)
+
+    if not has_any_role(user_roles, allowed_roles):
+        await ctx.send(f"{ctx.author.mention}, você precisa estar com o cargo **{role_inscrito_name}** ou ser membro para usar esse comando.")
+        return
+
+    embed = discord.Embed(
+        title="PIX - Taxa de Inscrição",
+        description="O PIX para taxa de inscrição é:\n`000.000.000-00` (substitua pelo correto)",
+        color=discord.Color.green()
+    )
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def inscrito(ctx):
+    user_roles = ctx.author.roles
+    mod_roles = [cargo_mod1, cargo_mod2]
+
+    # Só moderação pode usar
+    if not has_any_role(user_roles, mod_roles):
+        await ctx.send(f"{ctx.author.mention}, você não tem permissão para usar esse comando.")
+        return
+
+    guild = ctx.guild
+    role = discord.utils.get(guild.roles, name=role_inscrito_name)
+
+    # Cria o cargo se não existir
+    if not role:
+        role = await guild.create_role(name=role_inscrito_name, mentionable=True)
+        await ctx.send(f"Cargo **{role_inscrito_name}** criado com sucesso!")
+
+    # Adiciona cargo aos usuários mencionados
+    if len(ctx.message.mentions) == 0:
+        await ctx.send(f"Use `{bot.command_prefix}inscrito @usuário` para adicionar o cargo a alguém.")
+        return
+
+    for member in ctx.message.mentions:
+        if role not in member.roles:
+            await member.add_roles(role)
+            await ctx.send(f"Cargo **{role_inscrito_name}** adicionado para {member.mention}!")
+        else:
+            await ctx.send(f"{member.mention} já possui o cargo **{role_inscrito_name}**.")
 
 @bot.event
 async def on_ready():
@@ -246,60 +301,78 @@ async def criarserver(ctx):
     await ctx.send("✅ Estrutura criada com sucesso!")
 
 
-def has_any_role(user_roles, role_ids):
-    return any(role.id in role_ids for role in user_roles)
-
 @bot.command()
-async def pix(ctx):
-    guild = ctx.guild
-    role_inscrito = discord.utils.get(guild.roles, name=role_inscrito_name)
-    user_roles = ctx.author.roles
+async def ajuda(ctx):
+    # IDs dos cargos
+    cargo_membro = 1382505877790470337  # O cargo extra de moderação que você pediu (corrigi para seu valor)
+    cargo_membro_geral = 1382505875549323346  # cargo membro (acesso básico)
+    cargo_mod1 = 1382505875549323349  # cargo mod 1
+    cargo_mod2 = 1382838597790470337  # cargo mod 2 (extra moderação)
 
-    # Verifica se tem cargo geral ou inscrito
-    allowed_roles = [cargo_geral]
-    if role_inscrito:
-        allowed_roles.append(role_inscrito.id)
+    roles_ids = [role.id for role in ctx.author.roles]
 
-    if not has_any_role(user_roles, allowed_roles):
-        await ctx.send(f"{ctx.author.mention}, você precisa estar com o cargo **{role_inscrito_name}** ou ser membro para usar esse comando.")
-        return
+    embed = discord.Embed(title="📚 Comandos disponíveis",
+                          color=discord.Color.green())
 
-    embed = discord.Embed(
-        title="PIX - Taxa de Inscrição",
-        description="O PIX para taxa de inscrição é:\n`000.000.000-00` (substitua pelo correto)",
-        color=discord.Color.green()
-    )
+    # Comandos gerais (sempre mostrar)
+    comandos_gerais = ("`!ajuda` - Mostra esta mensagem\n"
+                       "`!ip` - Mostra o ip e porta do servidor!\n")
+
+    # Diversão
+    comandos_diversao = (
+        "`!ping` - Testa a latência do bot\n"
+        "`!userinfo @usuário` - Mostra informações do usuário\n"
+        "`!avatar @usuário` - Mostra o avatar do usuário\n"
+        "`!roll [lados]` - Rola um dado com N lados (padrão 6)\n"
+        "`!pix` - Pix para pagar a taxa de inscrição\n"
+        "`!serverinfo` - Mostra informações do servidor\n")
+
+    # Moderação
+    comandos_moderacao = (
+        "`!ban @usuário [motivo]` - Bane o usuário do servidor\n"
+        "`!kick @usuário [motivo]` - Expulsa o usuário do servidor\n"
+        "`!mute @usuário [tempo] [motivo]` - Silencia o usuário\n"
+        "`!unmute @usuário` - Remove o silenciamento\n"
+        "`!warn @usuário [motivo]` - Aplica um aviso\n"
+        "`!warnings @usuário` - Mostra os avisos\n"
+        "`!mutecargo` - Cria o cargo de mute\n"
+        "`!chat <n>` - Apaga mensagens do canal\n"
+        "`!criarserver` - Cria a estrutura do servidor\n"
+        "`!deletar` - Remove categorias, canais e cargos criados\n"
+        "`!lock` - Fecha o canal, apenas permitindo visibilidade.\n"
+        "`!unlock` - Ativa o canal novamente.\n"
+        "`!regrasdc` - Manda a lista de regras do servidor.\n"
+        "`!mods` - Lista o mods do servidor.\n"
+        "`!inscrito` - Cria cargo inscrito.\n"
+        "`!shutdown` - Desliga o bot (somente dono)\n")
+
+    # Pixelmon WC
+    comandos_pixelmon = (
+        "`!fdg` - Mostra as 6 rodadas da fase de grupos\n"
+        "`!paises` - Envia mensagem de seleção de país com autorole\n")
+
+    # Adiciona sempre gerais e diversão
+    embed.add_field(name="Comandos Gerais",
+                    value=comandos_gerais,
+                    inline=False)
+    embed.add_field(name="Diversão", value=comandos_diversao, inline=False)
+
+    # Verifica se o usuário é mod (qualquer um dos 2 cargos de moderação)
+    if cargo_mod1 in roles_ids or cargo_mod2 in roles_ids:
+        embed.add_field(name="Moderação",
+                        value=comandos_moderacao,
+                        inline=False)
+        embed.add_field(name="Pixelmon WC",
+                        value=comandos_pixelmon,
+                        inline=False)
+    # Se só for membro, mostra só moderação (sem pixelmon)
+    elif cargo_membro_geral in roles_ids:
+        embed.add_field(name="Moderação",
+                        value=comandos_moderacao,
+                        inline=False)
+    # Se não tiver nada, não adiciona moderação nem pixelmon
+
     await ctx.send(embed=embed)
-
-@bot.command()
-async def inscrito(ctx):
-    user_roles = ctx.author.roles
-    mod_roles = [cargo_mod1, cargo_mod2]
-
-    # Só moderação pode usar
-    if not has_any_role(user_roles, mod_roles):
-        await ctx.send(f"{ctx.author.mention}, você não tem permissão para usar esse comando.")
-        return
-
-    guild = ctx.guild
-    role = discord.utils.get(guild.roles, name=role_inscrito_name)
-
-    # Cria o cargo se não existir
-    if not role:
-        role = await guild.create_role(name=role_inscrito_name, mentionable=True)
-        await ctx.send(f"Cargo **{role_inscrito_name}** criado com sucesso!")
-
-    # Adiciona cargo aos usuários mencionados
-    if len(ctx.message.mentions) == 0:
-        await ctx.send(f"Use `{bot.command_prefix}inscrito @usuário` para adicionar o cargo a alguém.")
-        return
-
-    for member in ctx.message.mentions:
-        if role not in member.roles:
-            await member.add_roles(role)
-            await ctx.send(f"Cargo **{role_inscrito_name}** adicionado para {member.mention}!")
-        else:
-            await ctx.send(f"{member.mention} já possui o cargo **{role_inscrito_name}**.")
 
 
 # Comando !ping
@@ -905,6 +978,7 @@ async def mods(ctx):
     )
     embed.set_footer(text="Em breve mais mods serão adicionados!")
     await ctx.send(embed=embed)
+
 
 
 keep_alive()
