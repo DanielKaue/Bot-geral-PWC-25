@@ -693,6 +693,7 @@ async def on_raw_reaction_add(payload):
         await member.add_roles(role)
 
 
+
 # Função para pegar ou criar canal de logs
 async def get_or_create_modlog_channel(guild):
     modlog = discord.utils.get(guild.text_channels, name="mod-logs")
@@ -705,6 +706,36 @@ async def get_or_create_modlog_channel(guild):
         modlog = await guild.create_text_channel("mod-logs",
                                                  overwrites=overwrites)
     return modlog
+
+@bot.event
+async def on_raw_reaction_remove(payload):
+    if payload.message_id != getattr(bot, "reacao_paises_msg_id", None):
+        return
+    if payload.user_id == bot.user.id:
+        return
+
+    guild = bot.get_guild(payload.guild_id)
+    member = guild.get_member(payload.user_id)
+    if not guild or not member:
+        return
+
+    emoji = str(payload.emoji)
+    cargo_nome = bot.reacao_paises_map.get(emoji)
+    if not cargo_nome:
+        return
+
+    # Verifica se é o emoji especial 🇺🇾 ou outro país
+    if emoji == "🇺🇾":
+        role = guild.get_role(1382838598948360192)
+    else:
+        role = discord.utils.get(guild.roles, name=cargo_nome)
+
+    if role and role in member.roles:
+        await member.remove_roles(role)
+        try:
+            await member.send(f"🚫 Você removeu a reação de **{role.name}** e perdeu o cargo.")
+        except:
+            pass
 
 
 @bot.event
