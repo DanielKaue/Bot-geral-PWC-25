@@ -59,7 +59,7 @@ async def pix(ctx):
             "O PIX para pagar a taxa de inscrição é:\n"
             "`000.000.000-00` *(substitua pelo correto)*\n\n"
             "**💸 Valor da inscrição:** R$5,00\n"
-            "**🏆 Premiação:** R$20,00"
+            "**🏆 Premiação:** R$100,00 (dividido entre os 4 integrantes da seleção)"
         ),
         color=discord.Color.green()
     )
