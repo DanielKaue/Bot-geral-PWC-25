@@ -54,11 +54,17 @@ async def pix(ctx):
         return
 
     embed = discord.Embed(
-        title="PIX - Taxa de Inscrição",
-        description="O PIX para taxa de inscrição é:\n`000.000.000-00` (substitua pelo correto)",
+        title="📌 PIX - Taxa de Inscrição",
+        description=(
+            "O PIX para pagar a taxa de inscrição é:\n"
+            "`000.000.000-00` *(substitua pelo correto)*\n\n"
+            "**💸 Valor da inscrição:** R$3,00\n"
+            "**🏆 Premiação:** R$5,00"
+        ),
         color=discord.Color.green()
     )
     await ctx.send(embed=embed)
+
 
 @bot.command()
 async def inscrito(ctx):
