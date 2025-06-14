@@ -906,33 +906,6 @@ async def mods(ctx):
     embed.set_footer(text="Em breve mais mods serão adicionados!")
     await ctx.send(embed=embed)
 
-@bot.command()
-async def pix(ctx):
-    embed = discord.Embed(
-        title="PIX - Taxa de Inscrição",
-        description="O PIX para taxa de inscrição é:\n`000.000.000-00` (exemplo)",
-        color=discord.Color.green()
-    )
-    await ctx.send(embed=embed)
-
-@bot.command()
-@commands.has_permissions(manage_roles=True)  # Só quem pode gerenciar cargos pode usar, opcional
-async def inscrito(ctx):
-    guild = ctx.guild
-    role_name = "Inscrito"
-
-    # Verifica se o cargo já existe
-    role = discord.utils.get(guild.roles, name=role_name)
-    if not role:
-        # Cria o cargo
-        role = await guild.create_role(name=role_name, mentionable=True)
-    
-    # Adiciona o cargo ao usuário
-    if role not in ctx.author.roles:
-        await ctx.author.add_roles(role)
-        await ctx.send(f"{ctx.author.mention}, você foi adicionado ao cargo **{role_name}**!")
-    else:
-        await ctx.send(f"{ctx.author.mention}, você já tem o cargo **{role_name}**!")
 
 keep_alive()
 bot.run(os.getenv("TOKEN"))
