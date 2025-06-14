@@ -8,7 +8,7 @@ import random
 import re
 import asyncio
 
-
+warns = {}
 
 app = Flask('')
 
