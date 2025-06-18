@@ -578,17 +578,16 @@ async def fdg(ctx):
     await ctx.send(embed=embed)
 
 
-trocas = {}  # Armazena quantas vezes cada user trocou de país
+trocas = {}  
+bot.reacao_paises_usuarios = {}
 
 @bot.command(name="paises")
 async def paises(ctx):
     embed = discord.Embed(
         title="🌍 Selecione seu país!",
-        description=(
-            "Clique no emoji correspondente ao seu país para receber o cargo.\n"
-            "Clique novamente para remover.\n\n"
-            "**⚠️ Você só pode trocar de país 3 vezes.**"
-        ),
+        description="Clique no emoji correspondente ao seu país para receber o cargo.\n"
+                    "Clique novamente para remover.\n\n"
+                    "**⚠️ Você só pode trocar de país 3 vezes.**",
         color=discord.Color.blue()
     )
 
@@ -607,7 +606,6 @@ async def paises(ctx):
 
     bot.reacao_paises_msg_id = msg.id
     bot.reacao_paises_map = emojis_map
-    bot.reacao_paises_usuarios = {}  # Para controlar trocas feitas
 
 
 @bot.event
@@ -616,11 +614,11 @@ async def on_raw_reaction_add(payload):
         return
 
     guild = bot.get_guild(payload.guild_id)
-    if guild is None:
+    if not guild:
         return
 
     member = guild.get_member(payload.user_id)
-    if member is None or member.bot:
+    if not member or member.bot:
         return
 
     emoji = str(payload.emoji)
@@ -629,60 +627,56 @@ async def on_raw_reaction_add(payload):
 
     cargo_nome = bot.reacao_paises_map[emoji]
     cargo = discord.utils.get(guild.roles, name=cargo_nome)
-    if cargo is None:
+    if not cargo:
         return
 
-    # Limite de pessoas por cargo (4)
     if len(cargo.members) >= 4:
-        try:
-            await member.send(f"O país {cargo_nome} está cheio. Escolha outro.")
-        except:
-            pass
         channel = guild.get_channel(payload.channel_id)
         message = await channel.fetch_message(payload.message_id)
         await message.remove_reaction(emoji, member)
+        try:
+            await member.send(f"❌ O país {cargo.name} já está com 4 participantes. Escolha outro.")
+        except:
+            pass
         return
+
+    cargos_pais = [discord.utils.get(guild.roles, name=f"🌍 {e} {n}") for n, e in PAISES]
+    cargos_atuais = [r for r in member.roles if r in cargos_pais and r != cargo]
 
     trocas = bot.reacao_paises_usuarios.get(member.id, 0)
-    if trocas >= 3:
-        try:
-            await member.send("Você atingiu o limite de 3 trocas de país.")
-        except:
-            pass
-        channel = guild.get_channel(payload.channel_id)
-        message = await channel.fetch_message(payload.message_id)
-        await message.remove_reaction(emoji, member)
-        return
 
-    # Listar cargos de países do servidor
-    cargos_pais = [discord.utils.get(guild.roles, name=f"🌍 {e} {n}") for n, e in PAISES]
-    cargos_atuais = [r for r in member.roles if r in cargos_pais]
-
-    # Se já tem cargo e está marcando outro, remove as reações extras e troca cargo
-    if len(cargos_atuais) >= 1:
-        channel = guild.get_channel(payload.channel_id)
-        message = await channel.fetch_message(payload.message_id)
-
-        # Remove todas as reações do usuário exceto a atual
-        for reaction in message.reactions:
-            if str(reaction.emoji) != emoji:
-                users = await reaction.users().flatten()
-                if member in users:
-                    await message.remove_reaction(reaction.emoji, member)
+    if cargos_atuais:
+        if trocas >= 3:
+            channel = guild.get_channel(payload.channel_id)
+            message = await channel.fetch_message(payload.message_id)
+            await message.remove_reaction(emoji, member)
+            try:
+                await member.send("🚫 Você atingiu o limite de 3 trocas de país.")
+            except:
+                pass
+            return
 
         try:
             await member.remove_roles(*cargos_atuais)
+            bot.reacao_paises_usuarios[member.id] = trocas + 1
         except:
             pass
 
-    # Adiciona o cargo novo
     try:
         await member.add_roles(cargo)
-        bot.reacao_paises_usuarios[member.id] = trocas + 1
-        restantes = 3 - bot.reacao_paises_usuarios[member.id]
-        await member.send(f"Você selecionou o país {cargo_nome}. Você tem mais {restantes} troca(s) restante(s).")
-    except Exception as e:
-        print(f"Erro ao adicionar cargo: {e}")
+        restantes = 3 - bot.reacao_paises_usuarios.get(member.id, 0)
+        await member.send(f"✅ Você escolheu o país {cargo.name}. Você ainda pode trocar **{restantes}** vez(es).\n⚠️ Lembre-se: você só pode ter **1 país por vez.**")
+    except:
+        pass
+
+    # Remove todas as reações exceto a atual
+    channel = guild.get_channel(payload.channel_id)
+    message = await channel.fetch_message(payload.message_id)
+    for reaction in message.reactions:
+        if str(reaction.emoji) != emoji:
+            users = await reaction.users().flatten()
+            if member in users:
+                await message.remove_reaction(reaction.emoji, member)
 
 
 @bot.event
@@ -691,11 +685,11 @@ async def on_raw_reaction_remove(payload):
         return
 
     guild = bot.get_guild(payload.guild_id)
-    if guild is None:
+    if not guild:
         return
 
     member = guild.get_member(payload.user_id)
-    if member is None or member.bot:
+    if not member or member.bot:
         return
 
     emoji = str(payload.emoji)
@@ -704,13 +698,11 @@ async def on_raw_reaction_remove(payload):
 
     cargo_nome = bot.reacao_paises_map[emoji]
     cargo = discord.utils.get(guild.roles, name=cargo_nome)
-    if cargo is None:
-        return
-
-    try:
-        await member.remove_roles(cargo)
-    except Exception as e:
-        print(f"Erro removendo cargo ao tirar reação: {e}")
+    if cargo:
+        try:
+            await member.remove_roles(cargo)
+        except:
+            pass
 
 @bot.command()
 async def ip(ctx):
