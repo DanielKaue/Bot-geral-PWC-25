@@ -580,6 +580,7 @@ async def fdg(ctx):
 
 trocas = {}  
 bot.reacao_paises_usuarios = {}
+bot.reacao_paises_user_reacao = {}
 
 @bot.command(name="paises")
 async def paises(ctx):
@@ -669,14 +670,18 @@ async def on_raw_reaction_add(payload):
     except:
         pass
 
-    # Remove todas as reações exceto a atual
+    # Agora remove a REAÇÃO anterior se existir
     channel = guild.get_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
-    for reaction in message.reactions:
-        if str(reaction.emoji) != emoji:
-            users = await reaction.users().flatten()
-            if member in users:
-                await message.remove_reaction(reaction.emoji, member)
+
+    ultima = bot.reacao_paises_user_reacao.get(member.id)
+    if ultima and ultima != emoji:
+        try:
+            await message.remove_reaction(ultima, member)
+        except:
+            pass
+
+    bot.reacao_paises_user_reacao[member.id] = emoji
 
 
 @bot.event
@@ -701,6 +706,8 @@ async def on_raw_reaction_remove(payload):
     if cargo:
         try:
             await member.remove_roles(cargo)
+            if bot.reacao_paises_user_reacao.get(member.id) == emoji:
+                del bot.reacao_paises_user_reacao[member.id]
         except:
             pass
 
