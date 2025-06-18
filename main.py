@@ -7,9 +7,11 @@ import random
 import re
 import asyncio
 import json
-from discord.ext import commands, tasks, button
 import aiosqlite
 import feedparser
+from discord.ext import commands, tasks
+from discord.ui import View, Button
+
 
 warns = {}
 
