@@ -524,7 +524,9 @@ async def ajuda(ctx):
 
     # Comandos gerais (sempre mostrar)
     comandos_gerais = ("`!ajuda` - Mostra esta mensagem\n"
-                       "`!ip` - Mostra o ip e porta do servidor!\n")
+                       "`!ip` - Mostra o ip e porta do servidor!\n"
+                       "`!canais` - Mostra os canais do servidor!\n"
+                       "`!lv` - Mostra o video mas recente dos canais\n")
 
     # Diversão
     comandos_diversao = (
