@@ -1,5 +1,4 @@
 import discord
-from discord.ext import commands
 import os
 from keep_alive import keep_alive
 from flask import Flask
@@ -8,6 +7,9 @@ import random
 import re
 import asyncio
 import json
+from discord.ext import commands, tasks
+import aiosqlite
+import feedparser
 
 warns = {}
 
@@ -28,7 +30,171 @@ def keep_alive():
     t.start()
 
 intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!" and "c!", intents=intents)
+
+DB = "divulgacao.db"
+STAFF_ROLE_ID = 1382505875549323349
+TICKET_CATEGORY_NAME = "Tickets"
+
+# ----- Banco de dados -----
+async def init_db():
+    async with aiosqlite.connect(DB) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS canais (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                plataforma TEXT,
+                link TEXT,
+                texto_novo TEXT,
+                ultimo_video_link TEXT
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                canal_id INTEGER,
+                usuario_id INTEGER,
+                aberto INTEGER DEFAULT 1
+            )
+        """)
+        await db.commit()
+
+@bot.event
+async def on_ready():
+    print(f"Bot online como {bot.user}")
+    await init_db()
+    checar_videos.start()
+
+@bot.command()
+async def canais(ctx):
+    """Lista todos os canais cadastrados"""
+    async with aiosqlite.connect(DB) as db:
+        cursor = await db.execute("SELECT id, plataforma, link FROM canais")
+        canais = await cursor.fetchall()
+        if not canais:
+            await ctx.send("Nenhum canal cadastrado.")
+            return
+
+        embed = discord.Embed(title="Canais de Divulgação", color=0x00FF00)
+        for cid, plataforma, link in canais:
+            embed.add_field(name=f"[{plataforma}]", value=link, inline=False)
+        await ctx.send(embed=embed)
+
+@bot.command()
+async def lv(ctx):
+    """Mostra o último vídeo postado de todos os canais"""
+    async with aiosqlite.connect(DB) as db:
+        cursor = await db.execute("SELECT plataforma, texto_novo, ultimo_video_link FROM canais")
+        canais = await cursor.fetchall()
+        if not canais:
+            await ctx.send("Nenhum canal cadastrado.")
+            return
+        embed = discord.Embed(title="Últimos vídeos postados", color=0xFF0000)
+        for plataforma, texto_novo, ultimo_video_link in canais:
+            if ultimo_video_link:
+                embed.add_field(name=plataforma, value=f"{texto_novo}\n{ultimo_video_link}", inline=False)
+            else:
+                embed.add_field(name=plataforma, value="Nenhum vídeo postado ainda", inline=False)
+        await ctx.send(embed=embed)
+
+@bot.command()
+async def inscrever_se(ctx):
+    """Abre ticket para staff aprovar canal"""
+    guild = ctx.guild
+    category = discord.utils.get(guild.categories, name=TICKET_CATEGORY_NAME)
+    if not category:
+        category = await guild.create_category(TICKET_CATEGORY_NAME)
+
+    # Cria o canal privado só pra staff + autor da inscrição
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        discord.utils.get(guild.roles, id=STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True),
+        ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    }
+    ticket = await guild.create_text_channel(f"ticket-{ctx.author.name}", category=category, overwrites=overwrites)
+    await ticket.send(f"{ctx.author.mention} Abra o ticket para enviar seu canal para aprovação da staff com o comando `c!addcanal` ou aguarde o staff responder aqui.")
+    await ctx.send(f"Ticket criado: {ticket.mention}")
+
+@bot.command()
+@commands.has_role(STAFF_ROLE_ID)
+async def staff(ctx):
+    """Comando para abrir ajuda exclusiva da staff"""
+    await ctx.send(f"{ctx.author.mention} Aqui é o canal de ajuda da staff. Use `c!addcanal` para adicionar canais, `c!removecanal` para remover.")
+
+@bot.command()
+@commands.has_role(STAFF_ROLE_ID)
+async def addcanal(ctx):
+    """Adiciona canal novo perguntando dados via DM"""
+    def check(m):
+        return m.author == ctx.author and isinstance(m.channel, discord.DMChannel)
+
+    try:
+        await ctx.author.send("Qual a plataforma do canal? (youtube, tiktok, instagram)")
+        plataforma = (await bot.wait_for('message', check=check, timeout=120)).content.lower()
+
+        await ctx.author.send("Qual o link do canal ou RSS?")
+        link = (await bot.wait_for('message', check=check, timeout=120)).content
+
+        await ctx.author.send("Qual o texto que deve aparecer no aviso de vídeo novo?")
+        texto = (await bot.wait_for('message', check=check, timeout=120)).content
+
+        async with aiosqlite.connect(DB) as db:
+            await db.execute(
+                "INSERT INTO canais (plataforma, link, texto_novo) VALUES (?, ?, ?)",
+                (plataforma, link, texto)
+            )
+            await db.commit()
+
+        await ctx.author.send(f"Canal {plataforma} adicionado com sucesso!")
+
+    except asyncio.TimeoutError:
+        await ctx.author.send("Tempo esgotado para responder. Tente o comando novamente.")
+
+@bot.command()
+@commands.has_role(STAFF_ROLE_ID)
+async def removecanal(ctx, canal_id: int):
+    """Remove canal pelo ID"""
+    async with aiosqlite.connect(DB) as db:
+        await db.execute("DELETE FROM canais WHERE id = ?", (canal_id,))
+        await db.commit()
+    await ctx.send(f"Canal com ID {canal_id} removido com sucesso.")
+
+# ----- Tarefa para checar vídeos novos -----
+
+@tasks.loop(minutes=5)
+async def checar_videos():
+    await bot.wait_until_ready()
+    async with aiosqlite.connect(DB) as db:
+        cursor = await db.execute("SELECT id, plataforma, link, texto_novo, ultimo_video_link FROM canais")
+        canais = await cursor.fetchall()
+        for cid, plataforma, link, texto, ultimo_video in canais:
+            # Exemplo simples: para YouTube usa feed RSS
+            novo_video_link = None
+            if plataforma == "youtube":
+                feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={link}"
+                feed = feedparser.parse(feed_url)
+                if feed.entries:
+                    novo_video_link = feed.entries[0].link
+            elif plataforma == "tiktok":
+                # TikTok não tem RSS oficial, teria que usar API ou outro método, aqui vamos ignorar ou colocar placeholder
+                continue
+            elif plataforma == "instagram":
+                # Instagram também sem RSS, ignorado no momento
+                continue
+            else:
+                continue
+
+            if novo_video_link and novo_video_link != ultimo_video:
+                # Atualiza no DB
+                await db.execute("UPDATE canais SET ultimo_video_link = ? WHERE id = ?", (novo_video_link, cid))
+                await db.commit()
+
+                # Envia embed no canal fixo (coloque o id do canal correto)
+                canal_divulgacao = bot.get_channel(SEU_CANAL_DE_DIVULGACAO_ID)  # <-- Colocar aqui o ID do canal de divulgação
+                if canal_divulgacao:
+                    embed = discord.Embed(title="Novo vídeo postado!", description=texto, color=0xFF0000, url=novo_video_link)
+                    embed.set_thumbnail(url=feed.entries[0].media_thumbnail[0]['url'] if hasattr(feed.entries[0], 'media_thumbnail') else None)
+                    embed.add_field(name="Assista aqui:", value=novo_video_link, inline=False)
+                    await canal_divulgacao.send(embed=embed)
 
 cargo_mod1 = 1382505875549323349
 cargo_mod2 = 1382838597790470337
