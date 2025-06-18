@@ -177,7 +177,7 @@ async def lv(ctx):
         await ctx.send(embed=embed)
 
 @bot.command()
-async def inscrever_se(ctx):
+async def inscrever(ctx):
     """Abre ticket com embed e botão para staff aprovar canal"""
     guild = ctx.guild
     categoria_tickets = discord.utils.get(guild.categories, id=1382838633094053933)
