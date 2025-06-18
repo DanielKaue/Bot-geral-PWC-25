@@ -74,8 +74,8 @@ async def staff(ctx):
         description="Aqui estão os comandos disponíveis para você, membro da staff:",
         color=0x1ABC9C
     )
-    embed.add_field(name="c!addcanal", value="Adiciona um canal novo para divulgação (via DM)", inline=False)
-    embed.add_field(name="c!removecanal <id>", value="Remove um canal pelo ID", inline=False)
+    embed.add_field(name="!addcanal", value="Adiciona um canal novo para divulgação (via DM)", inline=False)
+    embed.add_field(name="!removecanal <id>", value="Remove um canal pelo ID", inline=False)
     embed.set_footer(text=f"Comandos para staff | {ctx.guild.name}")
     embed.set_thumbnail(url=str(ctx.guild.icon.url) if ctx.guild.icon else discord.Embed.Empty)
 
@@ -160,7 +160,7 @@ async def lv(ctx):
 
 # Comando para abrir ticket de inscrição (cria canal privado para staff + usuário)
 @bot.command()
-async def inscrever_se(ctx):
+async def inscrever(ctx):
     guild = ctx.guild
     category = discord.utils.get(guild.categories, id=1382838633094053933)
     if not category:
@@ -561,7 +561,7 @@ async def ajuda(ctx):
                        "`!ip` - Mostra o ip e porta do servidor!\n"
                        "`!canais` - Mostra os canais do servidor!\n"
                        "`!lv` - Mostra o video mas recente dos canais\n"
-                       "`!inscrever-se` - Mande seu canal para participar do divulgação\n")
+                       "`!inscrever` - Mande seu canal para participar do divulgação\n")
 
     # Diversão
     comandos_diversao = (
