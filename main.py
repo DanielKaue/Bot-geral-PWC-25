@@ -11,6 +11,7 @@ import aiosqlite
 import feedparser
 from discord.ext import commands, tasks
 from discord.ui import View, Button
+from discord import Interaction
 
 
 warns = {}
@@ -36,9 +37,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 DB = "divulgacao.db"
 STAFF_ROLE_ID = 1382505875549323349
-TICKET_CATEGORY_ID = 1382838633094053933
-SEU_CANAL_DE_DIVULGACAO_ID = 1382838641482530938
-
+TICKET_CATEGORY_ID = 1382838633094053933  # Coloque o ID correto da categoria Tickets
+CANAL_DIVULGACAO_ID = 1382838641482530938  # Canal onde o bot vai postar aviso de vídeo novo
 
 async def init_db():
     async with aiosqlite.connect(DB) as db:
@@ -61,123 +61,124 @@ async def init_db():
         """)
         await db.commit()
 
-
-class AprovarCancelarView(View):
+class CancelarCanalView(View):
     def __init__(self):
         super().__init__(timeout=None)
-
-    @discord.ui.button(label="✅ Aprovar canal", style=discord.ButtonStyle.success, custom_id="aprovar_canal")
-    async def aprovar(self, interaction: discord.Interaction, button: Button):
-        if not any(role.id == STAFF_ROLE_ID for role in interaction.user.roles):
-            await interaction.response.send_message("Somente a staff pode usar este botão.", ephemeral=True)
-            return
-
-        try:
-            await interaction.user.send("Qual a plataforma do canal? (youtube, tiktok, instagram)")
-            plataforma = (await bot.wait_for('message', check=lambda m: m.author == interaction.user and isinstance(m.channel, discord.DMChannel), timeout=120)).content.lower()
-
-            await interaction.user.send("Qual o link do canal ou RSS?")
-            link = (await bot.wait_for('message', check=lambda m: m.author == interaction.user and isinstance(m.channel, discord.DMChannel), timeout=120)).content
-
-            await interaction.user.send("Qual o texto que deve aparecer no aviso de vídeo novo?")
-            texto = (await bot.wait_for('message', check=lambda m: m.author == interaction.user and isinstance(m.channel, discord.DMChannel), timeout=120)).content
-
-            async with aiosqlite.connect(DB) as db:
-                await db.execute("INSERT INTO canais (plataforma, link, texto_novo) VALUES (?, ?, ?)", (plataforma, link, texto))
-                await db.commit()
-
-            await interaction.user.send(f"✅ Canal `{plataforma}` registrado com sucesso!")
-            await interaction.response.send_message(f"Canal aprovado por {interaction.user.mention}.", ephemeral=False)
-
-        except asyncio.TimeoutError:
-            await interaction.user.send("Tempo esgotado. Tente novamente.")
 
     @discord.ui.button(label="❌ Cancelar canal", style=discord.ButtonStyle.danger, custom_id="cancelar_canal")
     async def cancelar(self, interaction: discord.Interaction, button: Button):
         if not interaction.channel.name.startswith("ticket-"):
             await interaction.response.send_message("Esse botão só funciona dentro de um canal de ticket.", ephemeral=True)
             return
-        await interaction.response.send_message("Canal cancelado com sucesso.", ephemeral=True)
+        await interaction.response.send_message("Canal de ticket encerrado.", ephemeral=True)
         await interaction.channel.delete()
 
+class AprovarCanalView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="✅ Aprovar canal", style=discord.ButtonStyle.success, custom_id="aprovar_canal")
+    async def aprovar(self, interaction: discord.Interaction, button: Button):
+        if STAFF_ROLE_ID not in [role.id for role in interaction.user.roles]:
+            await interaction.response.send_message("Apenas membros da staff podem usar esse botão.", ephemeral=True)
+            return
+        if not interaction.channel.name.startswith("ticket-"):
+            await interaction.response.send_message("Esse botão só funciona dentro de um canal de ticket.", ephemeral=True)
+            return
+        
+        def check(m):
+            return m.channel == interaction.channel and m.author == interaction.user
+
+        await interaction.response.send_message("Vamos registrar o canal para divulgação. Responda as perguntas aqui mesmo:", ephemeral=True)
+        
+        try:
+            await interaction.channel.send("1️⃣ Qual a plataforma do canal? (youtube, tiktok, instagram)")
+            plataforma_msg = await bot.wait_for('message', check=check, timeout=120)
+            plataforma = plataforma_msg.content.lower()
+
+            await interaction.channel.send("2️⃣ Qual o link do canal ou RSS?")
+            link_msg = await bot.wait_for('message', check=check, timeout=120)
+            link = link_msg.content
+
+            await interaction.channel.send("3️⃣ Qual o texto que deve aparecer no aviso de vídeo novo?")
+            texto_msg = await bot.wait_for('message', check=check, timeout=120)
+            texto = texto_msg.content
+
+            async with aiosqlite.connect(DB) as db:
+                await db.execute(
+                    "INSERT INTO canais (plataforma, link, texto_novo) VALUES (?, ?, ?)",
+                    (plataforma, link, texto)
+                )
+                await db.commit()
+
+            await interaction.channel.send(f"Canal `{plataforma}` adicionado com sucesso para divulgação!")
+            
+            # Fecha o ticket após aprovar
+            await asyncio.sleep(5)
+            await interaction.channel.delete()
+
+        except asyncio.TimeoutError:
+            await interaction.channel.send("Tempo esgotado para responder. Tente aprovar o canal novamente.")
 
 @bot.event
 async def on_ready():
     print(f"Bot online como {bot.user}")
     await init_db()
-    bot.add_view(AprovarCancelarView())
+    bot.add_view(CancelarCanalView())
+    bot.add_view(AprovarCanalView())
     checar_videos.start()
-
-
-@bot.command()
-async def canais(ctx):
-    async with aiosqlite.connect(DB) as db:
-        cursor = await db.execute("SELECT id, plataforma, link FROM canais")
-        canais = await cursor.fetchall()
-
-    if not canais:
-        await ctx.send("Nenhum canal cadastrado.")
-        return
-
-    embed = discord.Embed(title="Canais de Divulgação", color=0x00FF00)
-    for cid, plataforma, link in canais:
-        embed.add_field(name=f"[{plataforma}] (ID {cid})", value=link, inline=False)
-    await ctx.send(embed=embed)
-
-
-@bot.command()
-async def lv(ctx):
-    async with aiosqlite.connect(DB) as db:
-        cursor = await db.execute("SELECT plataforma, texto_novo, ultimo_video_link FROM canais")
-        canais = await cursor.fetchall()
-
-    if not canais:
-        await ctx.send("Nenhum canal cadastrado.")
-        return
-
-    embed = discord.Embed(title="Últimos vídeos postados", color=0xFF0000)
-    for plataforma, texto_novo, ultimo_video_link in canais:
-        if ultimo_video_link:
-            embed.add_field(name=plataforma, value=f"{texto_novo}\n{ultimo_video_link}", inline=False)
-        else:
-            embed.add_field(name=plataforma, value="Nenhum vídeo postado ainda", inline=False)
-    await ctx.send(embed=embed)
-
 
 @bot.command()
 async def inscrever(ctx):
     guild = ctx.guild
-    categoria = discord.utils.get(guild.categories, id=TICKET_CATEGORY_ID)
-    if not categoria:
-        categoria = await guild.create_category("Tickets")
+    categoria_tickets = guild.get_channel(TICKET_CATEGORY_ID)
+    if not categoria_tickets:
+        categoria_tickets = await guild.create_category("Tickets")
 
-    nome_ticket = f"ticket-{ctx.author.name.lower()}"
+    nome_ticket = f"ticket-{ctx.author.name}".lower()
 
-    for canal in categoria.channels:
+    for canal in categoria_tickets.channels:
         if canal.name == nome_ticket:
             await ctx.send(f"Você já tem um ticket aberto: {canal.mention}")
             return
 
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        discord.utils.get(guild.roles, id=STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        guild.get_role(STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True),
+        ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     }
 
-    canal = await guild.create_text_channel(nome_ticket, category=categoria, overwrites=overwrites)
+    ticket = await guild.create_text_channel(nome_ticket, category=categoria_tickets, overwrites=overwrites)
 
     embed = discord.Embed(
         title="📩 Inscrição de Canal para Divulgação",
         description=(
             f"{ctx.author.mention}, use este canal para enviar o seu canal para aprovação da staff.\n\n"
-            "A staff usará os botões abaixo para aprovar ou cancelar.\n\n"
-            "Clique em ❌ se quiser cancelar o pedido."
+            "Clique no botão **Aprovar canal** para iniciar o registro.\n"
+            "Se quiser cancelar o pedido, clique em **Cancelar canal**."
         ),
         color=0x2ecc71
     )
-    await canal.send(content=ctx.author.mention, embed=embed, view=AprovarCancelarView())
-    await ctx.send(f"✅ Ticket criado com sucesso: {canal.mention}")
+    embed.set_footer(text="Equipe de Divulgação")
 
+    await ticket.send(content=ctx.author.mention, embed=embed, view=View())
+    await ticket.send(view=AprovarCanalView())
+    await ticket.send(view=CancelarCanalView())
+    await ctx.send(f"✅ Ticket criado com sucesso: {ticket.mention}")
+
+@bot.command()
+async def canais(ctx):
+    async with aiosqlite.connect(DB) as db:
+        cursor = await db.execute("SELECT id, plataforma, link FROM canais")
+        canais = await cursor.fetchall()
+        if not canais:
+            await ctx.send("Nenhum canal cadastrado.")
+            return
+
+        embed = discord.Embed(title="Canais de Divulgação", color=0x00FF00)
+        for cid, plataforma, link in canais:
+            embed.add_field(name=f"[{plataforma}]", value=link, inline=False)
+        await ctx.send(embed=embed)
 
 @tasks.loop(minutes=5)
 async def checar_videos():
@@ -187,7 +188,7 @@ async def checar_videos():
         cursor = await db.execute("SELECT id, plataforma, link, texto_novo, ultimo_video_link FROM canais WHERE plataforma = 'youtube'")
         canais = await cursor.fetchall()
 
-    canal_divulgacao = bot.get_channel(SEU_CANAL_DE_DIVULGACAO_ID)
+    canal_divulgacao = bot.get_channel(CANAL_DIVULGACAO_ID)
     if not canal_divulgacao:
         print("Canal de divulgação não encontrado.")
         return
@@ -207,8 +208,11 @@ async def checar_videos():
                     color=0xFF0000,
                     url=video_link
                 )
+                thumb_url = None
                 if hasattr(novo_video, 'media_thumbnail'):
-                    embed.set_thumbnail(url=novo_video.media_thumbnail[0]['url'])
+                    thumb_url = novo_video.media_thumbnail[0]['url']
+                if thumb_url:
+                    embed.set_thumbnail(url=thumb_url)
                 embed.add_field(name="Assista aqui:", value=video_link, inline=False)
 
                 await canal_divulgacao.send(embed=embed)
