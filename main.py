@@ -30,7 +30,7 @@ def keep_alive():
     t.start()
 
 intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!" and "c!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 DB = "divulgacao.db"
 STAFF_ROLE_ID = 1382505875549323349
