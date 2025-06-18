@@ -55,9 +55,11 @@ PAISES = [
 ]
 PAGINA_PAISES_FILE = "paises_data.json"
 MAX_TROCAS = 3
+MAX_MEMBROS_POR_PAIS = 4
 
 def has_any_role(user_roles, role_ids):
     return any(role.id in role_ids for role in user_roles)
+
 
 def carregar_dados_paises():
     try:
@@ -69,6 +71,7 @@ def carregar_dados_paises():
 def salvar_dados_paises(data):
     with open(PAGINA_PAISES_FILE, "w") as f:
         json.dump(data, f, indent=4)
+
 
 @bot.command()
 async def pix(ctx):
@@ -638,7 +641,8 @@ async def paises(ctx):
         description=(
             "Clique no emoji correspondente ao seu país para receber o cargo.\n"
             "Clique novamente para remover.\n\n"
-            "**⚠️ Você só pode trocar de país 3 vezes.**"
+            "**⚠️ Você só pode trocar de país 3 vezes.**\n"
+            "**⚠️ Cada país suporta até 4 membros.**"
         ),
         color=discord.Color.blue()
     )
@@ -656,19 +660,16 @@ async def paises(ctx):
     for emoji in emojis_map:
         await msg.add_reaction(emoji)
 
-    # Salvar ID da mensagem e canal para monitorar reações
     dados = carregar_dados_paises()
     dados["message_id"] = msg.id
     dados["channel_id"] = msg.channel.id
     dados["emojis_map"] = emojis_map
     salvar_dados_paises(dados)
 
-# --- EVENTOS PARA REAÇÕES ---
-
 @bot.event
 async def on_raw_reaction_add(payload):
     if payload.user_id == bot.user.id:
-        return  # ignora o próprio bot
+        return
 
     dados = carregar_dados_paises()
     if not dados:
@@ -686,7 +687,6 @@ async def on_raw_reaction_add(payload):
         return
 
     emoji = str(payload.emoji)
-
     emojis_map = dados.get("emojis_map", {})
     if emoji not in emojis_map:
         return
@@ -696,51 +696,116 @@ async def on_raw_reaction_add(payload):
     if not cargo:
         return
 
-    # Dados de trocas do usuário
     trocas_usuario = dados.get("trocas_usuario", {})
     usuario_id_str = str(payload.user_id)
-
-    # Quantas vezes o usuário já trocou
     qtde_trocas = trocas_usuario.get(usuario_id_str, 0)
 
-    # Verifica cargos atuais de país do membro
-    cargos_paises = [discord.utils.get(guild.roles, name=nome) for _, nome in emojis_map.items()]
-    cargos_paises = [c for c in cargos_paises if c is not None]
-
-    cargos_do_usuario = [r for r in membro.roles if r in cargos_paises]
-
-    # Se o membro já tem o cargo da reação, isso é um clique pra remover
-    if cargo in cargos_do_usuario:
-        await membro.remove_roles(cargo)
-        await membro.send(f"Você removeu o cargo de país {cargo_nome}.")
-        # Não conta como troca, só remove
+    # Verifica se o país está cheio
+    membros_no_cargo = [m for m in guild.members if cargo in m.roles]
+    if len(membros_no_cargo) >= MAX_MEMBROS_POR_PAIS:
+        canal = bot.get_channel(payload.channel_id)
+        if canal:
+            await canal.send(f"{membro.mention}, o país **{cargo_nome}** já está cheio (máximo {MAX_MEMBROS_POR_PAIS} membros).")
+        # Remove a reação para o usuário não ficar "preso"
+        try:
+            canal = bot.get_channel(payload.channel_id)
+            mensagem = await canal.fetch_message(payload.message_id)
+            await mensagem.remove_reaction(payload.emoji, membro)
+        except:
+            pass
         return
 
-    # Se o usuário já tem 3 trocas, bloqueia
+    # Busca todos cargos países disponíveis
+    cargos_paises = [discord.utils.get(guild.roles, name=nome) for nome in emojis_map.values()]
+    cargos_paises = [c for c in cargos_paises if c is not None]
+
+    # Cargos atuais do usuário que são países
+    cargos_do_usuario = [r for r in membro.roles if r in cargos_paises]
+
+    # Se já tem esse cargo (clicou de novo), remove e remove a reação para desmarcar
+    if cargo in cargos_do_usuario:
+        await membro.remove_roles(cargo)
+        try:
+            canal = bot.get_channel(payload.channel_id)
+            mensagem = await canal.fetch_message(payload.message_id)
+            await mensagem.remove_reaction(payload.emoji, membro)
+        except:
+            pass
+        await membro.send(f"Você removeu o cargo de país {cargo_nome}.")
+        return
+
+    # Se atingiu o limite de trocas, bloqueia
     if qtde_trocas >= MAX_TROCAS:
         canal = bot.get_channel(payload.channel_id)
         if canal:
-            await canal.send(f"{membro.mention} você atingiu o limite de {MAX_TROCAS} trocas de país.")
+            await canal.send(f"{membro.mention}, você atingiu o limite de {MAX_TROCAS} trocas de país.")
+        try:
+            canal = bot.get_channel(payload.channel_id)
+            mensagem = await canal.fetch_message(payload.message_id)
+            await mensagem.remove_reaction(payload.emoji, membro)
+        except:
+            pass
         return
 
-    # Se o usuário tem outro cargo de país, remove ele antes
+    # Remove o(s) cargo(s) antigo(s)
     for c in cargos_do_usuario:
         if c != cargo:
             await membro.remove_roles(c)
+            # Remove a reação antiga
+            try:
+                canal = bot.get_channel(payload.channel_id)
+                mensagem = await canal.fetch_message(payload.message_id)
+                # Tenta achar a reação que o usuário tem e remove
+                emoji_antigo = c.name[2]  # Pegando o emoji do cargo pelo nome
+                await mensagem.remove_reaction(emoji_antigo, membro)
+            except:
+                pass
 
-    # Dá o cargo novo
+    # Dá o novo cargo
     await membro.add_roles(cargo)
 
-    # Atualiza o contador de trocas
+    # Atualiza contador de trocas
     trocas_usuario[usuario_id_str] = qtde_trocas + 1
-
-    # Salva os dados atualizados
     dados["trocas_usuario"] = trocas_usuario
     salvar_dados_paises(dados)
 
     canal = bot.get_channel(payload.channel_id)
     if canal:
-        await canal.send(f"{membro.mention} seu cargo foi atualizado para {cargo_nome}. Trocas usadas: {trocas_usuario[usuario_id_str]}/{MAX_TROCAS}.")
+        await canal.send(f"{membro.mention}, seu cargo foi atualizado para {cargo_nome}. Trocas usadas: {trocas_usuario[usuario_id_str]}/{MAX_TROCAS}.")
+
+@bot.event
+async def on_raw_reaction_remove(payload):
+    if payload.user_id == bot.user.id:
+        return
+
+    dados = carregar_dados_paises()
+    if not dados:
+        return
+
+    if payload.message_id != dados.get("message_id"):
+        return
+
+    guild = bot.get_guild(payload.guild_id)
+    if not guild:
+        return
+
+    membro = guild.get_member(payload.user_id)
+    if not membro:
+        return
+
+    emoji = str(payload.emoji)
+    emojis_map = dados.get("emojis_map", {})
+    if emoji not in emojis_map:
+        return
+
+    cargo_nome = emojis_map[emoji]
+    cargo = discord.utils.get(guild.roles, name=cargo_nome)
+    if not cargo:
+        return
+
+    if cargo in membro.roles:
+        await membro.remove_roles(cargo)
+        await membro.send(f"Você removeu o cargo de país {cargo_nome} ao tirar a reação.")
 
 @bot.event
 async def on_raw_reaction_remove(payload):
