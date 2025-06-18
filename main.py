@@ -35,6 +35,11 @@ cargo_mod1 = 1382505875549323349
 cargo_mod2 = 1382838597790470337
 cargo_geral = 1382505875549323346
 role_inscrito_name = "Inscrito"
+
+PAGINA_PAISES_FILE = "paises_data.json"
+MAX_TROCAS = 3
+MAX_MEMBROS_POR_PAIS = 4
+
 PAISES = [
     ("Brasil", "🇧🇷"),
     ("Argentina", "🇦🇷"),
@@ -53,9 +58,6 @@ PAISES = [
     ("Austrália", "🇦🇺"),
     ("EUA", "🇺🇸")
 ]
-PAGINA_PAISES_FILE = "paises_data.json"
-MAX_TROCAS = 3
-MAX_MEMBROS_POR_PAIS = 4
 
 def has_any_role(user_roles, role_ids):
     return any(role.id in role_ids for role in user_roles)
@@ -71,7 +73,6 @@ def carregar_dados_paises():
 def salvar_dados_paises(data):
     with open(PAGINA_PAISES_FILE, "w") as f:
         json.dump(data, f, indent=4)
-
 
 @bot.command()
 async def pix(ctx):
@@ -633,179 +634,26 @@ async def fdg(ctx):
 
 trocas = {}  # Armazena quantas vezes cada user trocou de país
 
-
-@bot.command(name="paises")
-async def paises(ctx):
-    embed = discord.Embed(
-        title="🌍 Selecione seu país!",
-        description=(
-            "Clique no emoji correspondente ao seu país para receber o cargo.\n"
-            "Clique novamente para remover.\n\n"
-            "**⚠️ Você só pode trocar de país 3 vezes.**\n"
-            "**⚠️ Cada país suporta até 4 membros.**"
-        ),
-        color=discord.Color.blue()
-    )
-
-    mensagem = ""
-    emojis_map = {}
-    for nome, emoji in PAISES:
-        cargo_nome = f"🌍 {emoji} {nome}"
-        mensagem += f"{emoji} - {nome}\n"
-        emojis_map[emoji] = cargo_nome
-
-    embed.add_field(name="Países disponíveis", value=mensagem, inline=False)
-    msg = await ctx.send(embed=embed)
-
-    for emoji in emojis_map:
-        await msg.add_reaction(emoji)
-
-    dados = carregar_dados_paises()
-    dados["message_id"] = msg.id
-    dados["channel_id"] = msg.channel.id
-    dados["emojis_map"] = emojis_map
-    salvar_dados_paises(dados)
-
-@bot.event
-async def on_raw_reaction_add(payload):
-    if payload.user_id == bot.user.id:
-        return
-
-    dados = carregar_dados_paises()
-    if not dados:
-        return
-
-    if payload.message_id != dados.get("message_id"):
-        return
-
-    guild = bot.get_guild(payload.guild_id)
-    if not guild:
-        return
-
-    membro = guild.get_member(payload.user_id)
-    if not membro:
-        return
-
-    emoji = str(payload.emoji)
-    emojis_map = dados.get("emojis_map", {})
-    if emoji not in emojis_map:
-        return
-
-    cargo_nome = emojis_map[emoji]
-    cargo = discord.utils.get(guild.roles, name=cargo_nome)
-    if not cargo:
-        return
-
-    trocas_usuario = dados.get("trocas_usuario", {})
-    usuario_id_str = str(payload.user_id)
-    qtde_trocas = trocas_usuario.get(usuario_id_str, 0)
-
-    # Verifica se o país está cheio
-    membros_no_cargo = [m for m in guild.members if cargo in m.roles]
-    if len(membros_no_cargo) >= MAX_MEMBROS_POR_PAIS:
-        canal = bot.get_channel(payload.channel_id)
-        if canal:
-            await canal.send(f"{membro.mention}, o país **{cargo_nome}** já está cheio (máximo {MAX_MEMBROS_POR_PAIS} membros).")
-        # Remove a reação para o usuário não ficar "preso"
-        try:
-            canal = bot.get_channel(payload.channel_id)
-            mensagem = await canal.fetch_message(payload.message_id)
-            await mensagem.remove_reaction(payload.emoji, membro)
-        except:
-            pass
-        return
-
-    # Busca todos cargos países disponíveis
-    cargos_paises = [discord.utils.get(guild.roles, name=nome) for nome in emojis_map.values()]
-    cargos_paises = [c for c in cargos_paises if c is not None]
-
-    # Cargos atuais do usuário que são países
-    cargos_do_usuario = [r for r in membro.roles if r in cargos_paises]
-
-    # Se já tem esse cargo (clicou de novo), remove e remove a reação para desmarcar
-    if cargo in cargos_do_usuario:
-        await membro.remove_roles(cargo)
-        try:
-            canal = bot.get_channel(payload.channel_id)
-            mensagem = await canal.fetch_message(payload.message_id)
-            await mensagem.remove_reaction(payload.emoji, membro)
-        except:
-            pass
-        await membro.send(f"Você removeu o cargo de país {cargo_nome}.")
-        return
-
-    # Se atingiu o limite de trocas, bloqueia
-    if qtde_trocas >= MAX_TROCAS:
-        canal = bot.get_channel(payload.channel_id)
-        if canal:
-            await canal.send(f"{membro.mention}, você atingiu o limite de {MAX_TROCAS} trocas de país.")
-        try:
-            canal = bot.get_channel(payload.channel_id)
-            mensagem = await canal.fetch_message(payload.message_id)
-            await mensagem.remove_reaction(payload.emoji, membro)
-        except:
-            pass
-        return
-
-    # Remove o(s) cargo(s) antigo(s)
-    for c in cargos_do_usuario:
-        if c != cargo:
-            await membro.remove_roles(c)
-            # Remove a reação antiga
-            try:
-                canal = bot.get_channel(payload.channel_id)
-                mensagem = await canal.fetch_message(payload.message_id)
-                # Tenta achar a reação que o usuário tem e remove
-                emoji_antigo = c.name[2]  # Pegando o emoji do cargo pelo nome
-                await mensagem.remove_reaction(emoji_antigo, membro)
-            except:
-                pass
-
-    # Dá o novo cargo
-    await membro.add_roles(cargo)
-
-    # Atualiza contador de trocas
-    trocas_usuario[usuario_id_str] = qtde_trocas + 1
-    dados["trocas_usuario"] = trocas_usuario
-    salvar_dados_paises(dados)
-
-    canal = bot.get_channel(payload.channel_id)
-    if canal:
-        await canal.send(f"{membro.mention}, seu cargo foi atualizado para {cargo_nome}. Trocas usadas: {trocas_usuario[usuario_id_str]}/{MAX_TROCAS}.")
-
-@bot.event
-async def on_raw_reaction_remove(payload):
-    if payload.user_id == bot.user.id:
-        return
-
-    dados = carregar_dados_paises()
-    if not dados:
-        return
-
-    if payload.message_id != dados.get("message_id"):
-        return
-
-    guild = bot.get_guild(payload.guild_id)
-    if not guild:
-        return
-
-    membro = guild.get_member(payload.user_id)
-    if not membro:
-        return
-
-    emoji = str(payload.emoji)
-    emojis_map = dados.get("emojis_map", {})
-    if emoji not in emojis_map:
-        return
-
-    cargo_nome = emojis_map[emoji]
-    cargo = discord.utils.get(guild.roles, name=cargo_nome)
-    if not cargo:
-        return
-
-    if cargo in membro.roles:
-        await membro.remove_roles(cargo)
-        await membro.send(f"Você removeu o cargo de país {cargo_nome} ao tirar a reação.")
+[{
+	"resource": "/C:/Users/dinos/Documents/GitHub/Bot-geral-PWC-25/main.py",
+	"owner": "python",
+	"code": {
+		"value": "reportUndefinedVariable",
+		"target": {
+			"$mid": 1,
+			"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportUndefinedVariable.md",
+			"scheme": "https",
+			"authority": "github.com"
+		}
+	},
+	"severity": 4,
+	"message": "\"get_or_create_modlog_channel\" is not defined",
+	"source": "Pylance",
+	"startLineNumber": 820,
+	"startColumn": 24,
+	"endLineNumber": 820,
+	"endColumn": 52
+}]
 
 @bot.event
 async def on_raw_reaction_remove(payload):
