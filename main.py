@@ -7,7 +7,7 @@ import random
 import re
 import asyncio
 import json
-from discord.ext import commands, tasks
+from discord.ext import commands, tasks, button
 import aiosqlite
 import feedparser
 
@@ -59,11 +59,27 @@ async def init_db():
         await db.commit()
 
 # ----- Eventos -----
+
+class CancelarCanalView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="❌ Cancelar canal", style=discord.ButtonStyle.danger, custom_id="cancelar_canal")
+    async def cancelar(self, interaction: discord.Interaction, button: Button):
+        if not interaction.channel.name.startswith("ticket-"):
+            await interaction.response.send_message("Esse botão só funciona dentro de um canal de ticket.", ephemeral=True)
+            return
+
+        await interaction.response.send_message("Canal de ticket encerrado.", ephemeral=True)
+        await interaction.channel.delete()
+
 @bot.event
 async def on_ready():
     print(f"Bot online como {bot.user}")
     await init_db()
+    bot.add_view(CancelarCanalView())  # ✅ importante!
     checar_videos.start()
+
 
 @bot.command()
 @commands.has_role(STAFF_ROLE_ID)
@@ -158,32 +174,46 @@ async def lv(ctx):
                 embed.add_field(name=plataforma, value="Nenhum vídeo postado ainda", inline=False)
         await ctx.send(embed=embed)
 
-# Comando para abrir ticket de inscrição (cria canal privado para staff + usuário)
 @bot.command()
-async def inscrever(ctx):
+async def inscrever_se(ctx):
+    """Abre ticket com embed e botão para staff aprovar canal"""
     guild = ctx.guild
-    category = discord.utils.get(guild.categories, id=1382838633094053933)
-    if not category:
-        category = await guild.create_category("Tickets")
+    categoria_tickets = discord.utils.get(guild.categories, id=1382838633094053933)
+    if not categoria_tickets:
+        categoria_tickets = await guild.create_category_channel("Tickets")
 
+    nome_ticket = f"ticket-{ctx.author.name}".lower()
+
+    # Evita duplicidade de ticket
+    for canal in categoria_tickets.channels:
+        if canal.name == nome_ticket:
+            await ctx.send(f"Você já tem um ticket aberto: {canal.mention}")
+            return
+
+    # Permissões
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         discord.utils.get(guild.roles, id=STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True),
         ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     }
 
-    ticket = await guild.create_text_channel(f"ticket-{ctx.author.name}", category=category, overwrites=overwrites)
+    # Criação do canal
+    ticket = await guild.create_text_channel(nome_ticket, category=categoria_tickets, overwrites=overwrites)
 
+    # Embed com botão
     embed = discord.Embed(
-        title="Novo Ticket de Inscrição!",
-        description=f"{ctx.author.mention} abriu um ticket para inscrição de canal.\n\nPor favor, envie as informações do canal aqui ou aguarde a staff.",
-        color=0x1ABC9C
+        title="📩 Inscrição de Canal para Divulgação",
+        description=(
+            f"{ctx.author.mention}, use este canal para enviar o seu canal para aprovação da staff.\n\n"
+            "**Quando estiver pronto, a staff usará `!addcanal` para registrar seu canal.**\n\n"
+            "Se quiser cancelar o pedido, clique no botão abaixo."
+        ),
+        color=0x2ecc71
     )
     embed.set_footer(text="Equipe de Divulgação")
-    # embed.set_thumbnail(url="https://i.imgur.com/your-image.png")  # opcional
-
-    await ticket.send(embed=embed)
-    await ctx.send(f"Ticket criado com sucesso! {ticket.mention}")
+    
+    await ticket.send(content=ctx.author.mention, embed=embed, view=CancelarCanalView())
+    await ctx.send(f"✅ Ticket criado com sucesso: {ticket.mention}")
 
 # Task para checar vídeos novos (exemplo YouTube via RSS)
 @tasks.loop(minutes=5)
