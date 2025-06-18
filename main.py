@@ -591,22 +591,25 @@ async def paises(ctx):
         ),
         color=discord.Color.blue()
     )
+
     mensagem = ""
     emojis_map = {}
     for nome, emoji in PAISES:
         cargo_nome = f"🌍 {emoji} {nome}"
         mensagem += f"{emoji} - {nome}\n"
         emojis_map[emoji] = cargo_nome
+
     embed.add_field(name="Países disponíveis", value=mensagem, inline=False)
     msg = await ctx.send(embed=embed)
+
     for emoji in emojis_map:
         await msg.add_reaction(emoji)
+
     bot.reacao_paises_msg_id = msg.id
     bot.reacao_paises_map = emojis_map
-    bot.reacao_paises_usuarios = {}  # Controle de trocas feitas por usuário
+    bot.reacao_paises_usuarios = {}  # Para controlar trocas feitas
 
 
-# Evento para dar cargo ao adicionar reação, com limite e troca controlada
 @bot.event
 async def on_raw_reaction_add(payload):
     if payload.message_id != getattr(bot, "reacao_paises_msg_id", None):
@@ -615,9 +618,11 @@ async def on_raw_reaction_add(payload):
     guild = bot.get_guild(payload.guild_id)
     if guild is None:
         return
+
     member = guild.get_member(payload.user_id)
     if member is None or member.bot:
         return
+
     emoji = str(payload.emoji)
     if emoji not in bot.reacao_paises_map:
         return
@@ -627,51 +632,59 @@ async def on_raw_reaction_add(payload):
     if cargo is None:
         return
 
-    # Checar limite do cargo
+    # Limite de pessoas por cargo (4)
     if len(cargo.members) >= 4:
         try:
             await member.send(f"O país {cargo_nome} está cheio. Escolha outro.")
-        except Exception:
+        except:
             pass
         channel = guild.get_channel(payload.channel_id)
         message = await channel.fetch_message(payload.message_id)
         await message.remove_reaction(emoji, member)
         return
 
-    # Checar limite de trocas
     trocas = bot.reacao_paises_usuarios.get(member.id, 0)
     if trocas >= 3:
         try:
             await member.send("Você atingiu o limite de 3 trocas de país.")
-        except Exception:
+        except:
             pass
         channel = guild.get_channel(payload.channel_id)
         message = await channel.fetch_message(payload.message_id)
         await message.remove_reaction(emoji, member)
         return
 
-    # Remover qualquer outro cargo de país que o usuário tenha
-    cargos_pais = [
-        discord.utils.get(guild.roles, name=f"🌍 {e} {n}")
-        for n, e in PAISES
-    ]
+    # Listar cargos de países do servidor
+    cargos_pais = [discord.utils.get(guild.roles, name=f"🌍 {e} {n}") for n, e in PAISES]
     cargos_atuais = [r for r in member.roles if r in cargos_pais]
 
-    if cargos_atuais:
+    # Se já tem cargo e está marcando outro, remove as reações extras e troca cargo
+    if len(cargos_atuais) >= 1:
+        channel = guild.get_channel(payload.channel_id)
+        message = await channel.fetch_message(payload.message_id)
+
+        # Remove todas as reações do usuário exceto a atual
+        for reaction in message.reactions:
+            if str(reaction.emoji) != emoji:
+                users = await reaction.users().flatten()
+                if member in users:
+                    await message.remove_reaction(reaction.emoji, member)
+
         try:
             await member.remove_roles(*cargos_atuais)
-        except Exception:
+        except:
             pass
 
-    # Adicionar novo cargo
+    # Adiciona o cargo novo
     try:
         await member.add_roles(cargo)
         bot.reacao_paises_usuarios[member.id] = trocas + 1
+        restantes = 3 - bot.reacao_paises_usuarios[member.id]
+        await member.send(f"Você selecionou o país {cargo_nome}. Você tem mais {restantes} troca(s) restante(s).")
     except Exception as e:
         print(f"Erro ao adicionar cargo: {e}")
 
 
-# Evento para remover cargo quando reação for retirada
 @bot.event
 async def on_raw_reaction_remove(payload):
     if payload.message_id != getattr(bot, "reacao_paises_msg_id", None):
@@ -680,9 +693,11 @@ async def on_raw_reaction_remove(payload):
     guild = bot.get_guild(payload.guild_id)
     if guild is None:
         return
+
     member = guild.get_member(payload.user_id)
     if member is None or member.bot:
         return
+
     emoji = str(payload.emoji)
     if emoji not in bot.reacao_paises_map:
         return
