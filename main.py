@@ -68,28 +68,20 @@ async def on_ready():
 @bot.command()
 @commands.has_role(STAFF_ROLE_ID)
 async def staff(ctx):
-    guild = ctx.guild
-    category = discord.utils.get(guild.categories, name=TICKET_CATEGORY_NAME)
-    if not category:
-        category = await guild.create_category(TICKET_CATEGORY_NAME)
+    """Comando para mostrar ajuda exclusiva da staff em embed"""
+    embed = discord.Embed(
+        title="Ajuda Exclusiva da Staff",
+        description="Aqui estão os comandos disponíveis para você, membro da staff:",
+        color=0x1ABC9C
+    )
+    embed.add_field(name="c!addcanal", value="Adiciona um canal novo para divulgação (via DM)", inline=False)
+    embed.add_field(name="c!removecanal <id>", value="Remove um canal pelo ID", inline=False)
+    embed.set_footer(text=f"Comandos para staff | {ctx.guild.name}")
+    embed.set_thumbnail(url=str(ctx.guild.icon.url) if ctx.guild.icon else discord.Embed.Empty)
 
-    nome_canal = f"staff-{ctx.author.name}".lower()
-    canal_existente = discord.utils.get(category.channels, name=nome_canal)
-    if canal_existente:
-        await ctx.send(f"Você já tem um canal de staff aberto: {canal_existente.mention}")
-        return
+    await ctx.send(embed=embed)
 
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        discord.utils.get(guild.roles, id=STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-    }
 
-    canal = await guild.create_text_channel(nome_canal, category=category, overwrites=overwrites)
-    await canal.send(f"Canal de ajuda da staff criado por {ctx.author.mention}. Use este espaço para discutir e ajudar a equipe.")
-    await ctx.send(f"Canal de staff criado: {canal.mention}")
-
-# Comando para adicionar canal (via DM)
 @bot.command()
 @commands.has_role(STAFF_ROLE_ID)
 async def addcanal(ctx):
