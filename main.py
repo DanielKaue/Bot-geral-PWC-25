@@ -35,6 +35,7 @@ bot = commands.Bot(command_prefix="!" and "c!", intents=intents)
 DB = "divulgacao.db"
 STAFF_ROLE_ID = 1382505875549323349
 TICKET_CATEGORY_NAME = "Tickets"
+SEU_CANAL_DE_DIVULGACAO_ID = 1382838641482530938
 
 # ----- Banco de dados -----
 async def init_db():
