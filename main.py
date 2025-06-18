@@ -36,8 +36,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 DB = "divulgacao.db"
 STAFF_ROLE_ID = 1382505875549323349
-TICKET_CATEGORY_NAME = "Tickets"
-SEU_CANAL_DE_DIVULGACAO_ID = 1382838641482530938  # Canal onde o bot postará avisos
+TICKET_CATEGORY_ID = 1382838633094053933
+SEU_CANAL_DE_DIVULGACAO_ID = 1382838641482530938
+
 
 async def init_db():
     async with aiosqlite.connect(DB) as db:
@@ -60,164 +61,124 @@ async def init_db():
         """)
         await db.commit()
 
-# ----- Eventos -----
 
-class CancelarCanalView(View):
+class AprovarCancelarView(View):
     def __init__(self):
         super().__init__(timeout=None)
+
+    @discord.ui.button(label="✅ Aprovar canal", style=discord.ButtonStyle.success, custom_id="aprovar_canal")
+    async def aprovar(self, interaction: discord.Interaction, button: Button):
+        if not any(role.id == STAFF_ROLE_ID for role in interaction.user.roles):
+            await interaction.response.send_message("Somente a staff pode usar este botão.", ephemeral=True)
+            return
+
+        try:
+            await interaction.user.send("Qual a plataforma do canal? (youtube, tiktok, instagram)")
+            plataforma = (await bot.wait_for('message', check=lambda m: m.author == interaction.user and isinstance(m.channel, discord.DMChannel), timeout=120)).content.lower()
+
+            await interaction.user.send("Qual o link do canal ou RSS?")
+            link = (await bot.wait_for('message', check=lambda m: m.author == interaction.user and isinstance(m.channel, discord.DMChannel), timeout=120)).content
+
+            await interaction.user.send("Qual o texto que deve aparecer no aviso de vídeo novo?")
+            texto = (await bot.wait_for('message', check=lambda m: m.author == interaction.user and isinstance(m.channel, discord.DMChannel), timeout=120)).content
+
+            async with aiosqlite.connect(DB) as db:
+                await db.execute("INSERT INTO canais (plataforma, link, texto_novo) VALUES (?, ?, ?)", (plataforma, link, texto))
+                await db.commit()
+
+            await interaction.user.send(f"✅ Canal `{plataforma}` registrado com sucesso!")
+            await interaction.response.send_message(f"Canal aprovado por {interaction.user.mention}.", ephemeral=False)
+
+        except asyncio.TimeoutError:
+            await interaction.user.send("Tempo esgotado. Tente novamente.")
 
     @discord.ui.button(label="❌ Cancelar canal", style=discord.ButtonStyle.danger, custom_id="cancelar_canal")
     async def cancelar(self, interaction: discord.Interaction, button: Button):
         if not interaction.channel.name.startswith("ticket-"):
             await interaction.response.send_message("Esse botão só funciona dentro de um canal de ticket.", ephemeral=True)
             return
-
-        await interaction.response.send_message("Canal de ticket encerrado.", ephemeral=True)
+        await interaction.response.send_message("Canal cancelado com sucesso.", ephemeral=True)
         await interaction.channel.delete()
+
 
 @bot.event
 async def on_ready():
     print(f"Bot online como {bot.user}")
     await init_db()
-    bot.add_view(CancelarCanalView())  # ✅ importante!
+    bot.add_view(AprovarCancelarView())
     checar_videos.start()
 
 
-@bot.command()
-@commands.has_role(STAFF_ROLE_ID)
-async def staff(ctx):
-    """Comando para mostrar ajuda exclusiva da staff em embed"""
-    embed = discord.Embed(
-        title="Ajuda Exclusiva da Staff",
-        description="Aqui estão os comandos disponíveis para você, membro da staff:",
-        color=0x1ABC9C
-    )
-    embed.add_field(name="!addcanal", value="Adiciona um canal novo para divulgação (via DM)", inline=False)
-    embed.add_field(name="!removecanal <id>", value="Remove um canal pelo ID", inline=False)
-    embed.set_footer(text=f"Comandos para staff | {ctx.guild.name}")
-    embed.set_thumbnail(url=str(ctx.guild.icon.url) if ctx.guild.icon else discord.Embed.Empty)
-
-    await ctx.send(embed=embed)
-
-
-@bot.command()
-@commands.has_role(STAFF_ROLE_ID)
-async def addcanal(ctx):
-    def check(m):
-        return m.author == ctx.author and isinstance(m.channel, discord.DMChannel)
-
-    try:
-        await ctx.author.send("Qual a plataforma do canal? (youtube, tiktok, instagram)")
-        plataforma = (await bot.wait_for('message', check=check, timeout=120)).content.lower()
-
-        await ctx.author.send("Qual o link do canal ou RSS?")
-        link = (await bot.wait_for('message', check=check, timeout=120)).content
-
-        await ctx.author.send("Qual o texto que deve aparecer no aviso de vídeo novo?")
-        texto = (await bot.wait_for('message', check=check, timeout=120)).content
-
-        async with aiosqlite.connect(DB) as db:
-            await db.execute(
-                "INSERT INTO canais (plataforma, link, texto_novo) VALUES (?, ?, ?)",
-                (plataforma, link, texto)
-            )
-            await db.commit()
-
-        await ctx.author.send(f"Canal {plataforma} adicionado com sucesso!")
-
-    except asyncio.TimeoutError:
-        await ctx.author.send("Tempo esgotado para responder. Tente o comando novamente.")
-
-# Comando para remover canal pelo ID
-@bot.command()
-@commands.has_role(STAFF_ROLE_ID)
-async def removecanal(ctx, canal_id: int):
-    async with aiosqlite.connect(DB) as db:
-        cursor = await db.execute("SELECT id FROM canais WHERE id = ?", (canal_id,))
-        canal = await cursor.fetchone()
-        if not canal:
-            await ctx.send(f"Canal com ID {canal_id} não encontrado.")
-            return
-
-        await db.execute("DELETE FROM canais WHERE id = ?", (canal_id,))
-        await db.commit()
-        await ctx.send(f"Canal com ID {canal_id} removido com sucesso.")
-
-# Comando para listar canais cadastrados
 @bot.command()
 async def canais(ctx):
     async with aiosqlite.connect(DB) as db:
         cursor = await db.execute("SELECT id, plataforma, link FROM canais")
         canais = await cursor.fetchall()
-        if not canais:
-            await ctx.send("Nenhum canal cadastrado.")
-            return
 
-        embed = discord.Embed(title="Canais de Divulgação", color=0x00FF00)
-        for cid, plataforma, link in canais:
-            embed.add_field(name=f"[{plataforma}]", value=link, inline=False)
-        await ctx.send(embed=embed)
+    if not canais:
+        await ctx.send("Nenhum canal cadastrado.")
+        return
 
-# Comando para mostrar último vídeo postado
+    embed = discord.Embed(title="Canais de Divulgação", color=0x00FF00)
+    for cid, plataforma, link in canais:
+        embed.add_field(name=f"[{plataforma}] (ID {cid})", value=link, inline=False)
+    await ctx.send(embed=embed)
+
+
 @bot.command()
 async def lv(ctx):
     async with aiosqlite.connect(DB) as db:
         cursor = await db.execute("SELECT plataforma, texto_novo, ultimo_video_link FROM canais")
         canais = await cursor.fetchall()
-        if not canais:
-            await ctx.send("Nenhum canal cadastrado.")
-            return
 
-        embed = discord.Embed(title="Últimos vídeos postados", color=0xFF0000)
-        for plataforma, texto_novo, ultimo_video_link in canais:
-            if ultimo_video_link:
-                embed.add_field(name=plataforma, value=f"{texto_novo}\n{ultimo_video_link}", inline=False)
-            else:
-                embed.add_field(name=plataforma, value="Nenhum vídeo postado ainda", inline=False)
-        await ctx.send(embed=embed)
+    if not canais:
+        await ctx.send("Nenhum canal cadastrado.")
+        return
+
+    embed = discord.Embed(title="Últimos vídeos postados", color=0xFF0000)
+    for plataforma, texto_novo, ultimo_video_link in canais:
+        if ultimo_video_link:
+            embed.add_field(name=plataforma, value=f"{texto_novo}\n{ultimo_video_link}", inline=False)
+        else:
+            embed.add_field(name=plataforma, value="Nenhum vídeo postado ainda", inline=False)
+    await ctx.send(embed=embed)
+
 
 @bot.command()
 async def inscrever(ctx):
-    """Abre ticket com embed e botão para staff aprovar canal"""
     guild = ctx.guild
-    categoria_tickets = discord.utils.get(guild.categories, id=1382838633094053933)
-    if not categoria_tickets:
-        categoria_tickets = await guild.create_category_channel("Tickets")
+    categoria = discord.utils.get(guild.categories, id=TICKET_CATEGORY_ID)
+    if not categoria:
+        categoria = await guild.create_category("Tickets")
 
-    nome_ticket = f"ticket-{ctx.author.name}".lower()
+    nome_ticket = f"ticket-{ctx.author.name.lower()}"
 
-    # Evita duplicidade de ticket
-    for canal in categoria_tickets.channels:
+    for canal in categoria.channels:
         if canal.name == nome_ticket:
             await ctx.send(f"Você já tem um ticket aberto: {canal.mention}")
             return
 
-    # Permissões
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        discord.utils.get(guild.roles, id=STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+        discord.utils.get(guild.roles, id=STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True)
     }
 
-    # Criação do canal
-    ticket = await guild.create_text_channel(nome_ticket, category=categoria_tickets, overwrites=overwrites)
+    canal = await guild.create_text_channel(nome_ticket, category=categoria, overwrites=overwrites)
 
-    # Embed com botão
     embed = discord.Embed(
         title="📩 Inscrição de Canal para Divulgação",
         description=(
             f"{ctx.author.mention}, use este canal para enviar o seu canal para aprovação da staff.\n\n"
-            "**Quando estiver pronto, a staff usará `!addcanal` para registrar seu canal.**\n\n"
-            "Se quiser cancelar o pedido, clique no botão abaixo."
+            "A staff usará os botões abaixo para aprovar ou cancelar.\n\n"
+            "Clique em ❌ se quiser cancelar o pedido."
         ),
         color=0x2ecc71
     )
-    embed.set_footer(text="Equipe de Divulgação")
-    
-    await ticket.send(content=ctx.author.mention, embed=embed, view=CancelarCanalView())
-    await ctx.send(f"✅ Ticket criado com sucesso: {ticket.mention}")
+    await canal.send(content=ctx.author.mention, embed=embed, view=AprovarCancelarView())
+    await ctx.send(f"✅ Ticket criado com sucesso: {canal.mention}")
 
-# Task para checar vídeos novos (exemplo YouTube via RSS)
+
 @tasks.loop(minutes=5)
 async def checar_videos():
     await bot.wait_until_ready()
@@ -246,12 +207,8 @@ async def checar_videos():
                     color=0xFF0000,
                     url=video_link
                 )
-                # Tenta pegar thumbnail do feed
-                thumb_url = None
                 if hasattr(novo_video, 'media_thumbnail'):
-                    thumb_url = novo_video.media_thumbnail[0]['url']
-                if thumb_url:
-                    embed.set_thumbnail(url=thumb_url)
+                    embed.set_thumbnail(url=novo_video.media_thumbnail[0]['url'])
                 embed.add_field(name="Assista aqui:", value=video_link, inline=False)
 
                 await canal_divulgacao.send(embed=embed)
@@ -262,6 +219,67 @@ async def checar_videos():
 
         except Exception as e:
             print(f"Erro ao checar canal {cid}: {e}")
+
+@bot.command()
+async def ajuda(ctx):
+    # IDs dos cargos
+    cargo_membro = 1382505877790470337
+    cargo_membro_geral = 1382505875549323346
+    cargo_mod1 = 1382505875549323349
+    cargo_mod2 = 1382838597790470337
+
+    roles_ids = [role.id for role in ctx.author.roles]
+
+    embed = discord.Embed(
+        title="📚 Comandos disponíveis",
+        color=discord.Color.green()
+    )
+
+    # Comandos gerais
+    comandos_gerais = (
+        "`!ajuda` - Mostra esta mensagem\n"
+        "`!ip` - Mostra o IP e porta do servidor\n"
+        "`!canais` - Lista os canais aprovados para divulgação\n"
+        "`!inscrever` - Envia seu canal para a staff aprovar\n"
+    )
+
+    comandos_diversao = (
+        "`!ping` - Testa a latência do bot\n"
+        "`!userinfo @usuário` - Mostra informações do usuário\n"
+        "`!avatar @usuário` - Mostra o avatar do usuário\n"
+        "`!roll [lados]` - Rola um dado com N lados (padrão 6)\n"
+        "`!pix` - Pix para pagar a taxa de inscrição\n"
+        "`!serverinfo` - Mostra informações do servidor\n"
+    )
+
+    comandos_moderacao = (
+        "`!chat <n>` - Apaga mensagens do canal\n"
+        "`!criarserver` - Cria a estrutura do servidor\n"
+        "`!deletar` - Remove categorias, canais e cargos criados\n"
+        "`!lock` - Fecha o canal (sem permissão de envio)\n"
+        "`!unlock` - Reabre o canal\n"
+        "`!regrasdc` - Envia as regras do servidor\n"
+        "`!mods` - Lista os moderadores do servidor\n"
+        "`!inscrito` - Cria cargo de inscrito\n"
+        "`!shutdown` - Desliga o bot (somente dono)\n"
+    )
+
+    comandos_pixelmon = (
+        "`!fdg` - Mostra as 6 rodadas da fase de grupos\n"
+        "`!paises` - Envia o menu de seleção de países com autorole\n"
+    )
+
+    embed.add_field(name="Comandos Gerais", value=comandos_gerais, inline=False)
+    embed.add_field(name="Diversão", value=comandos_diversao, inline=False)
+
+    if cargo_mod1 in roles_ids or cargo_mod2 in roles_ids:
+        embed.add_field(name="Moderação", value=comandos_moderacao, inline=False)
+        embed.add_field(name="Pixelmon WC", value=comandos_pixelmon, inline=False)
+    elif cargo_membro_geral in roles_ids:
+        embed.add_field(name="Moderação", value=comandos_moderacao, inline=False)
+
+    await ctx.send(embed=embed)
+
 
 cargo_mod1 = 1382505875549323349
 cargo_mod2 = 1382838597790470337
