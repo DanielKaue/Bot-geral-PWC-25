@@ -27,6 +27,18 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
+async def get_or_create_modlog_channel(guild):
+    # Procura canal com nome 'mod-log'
+    for channel in guild.text_channels:
+        if channel.name == "mod-log":
+            return channel
+    # Se não achar, cria um
+    try:
+        channel = await guild.create_text_channel("mod-log")
+        return channel
+    except Exception as e:
+        print(f"Erro ao criar canal mod-log: {e}")
+        return None
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
