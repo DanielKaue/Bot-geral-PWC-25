@@ -134,63 +134,20 @@ async def lv(ctx):
 
 @bot.command()
 async def inscrever_se(ctx):
-    """Abre ticket para staff aprovar canal com embed bonito dentro do ticket"""
+    """Abre ticket para staff aprovar canal"""
     guild = ctx.guild
-    category_id = 1382838633094053933
-    category = discord.utils.get(guild.categories, id=category_id)
+    category = discord.utils.get(guild.categories, name=TICKET_CATEGORY_NAME)
     if not category:
-        category = await guild.create_category("Tickets")
+        category = await guild.create_category(TICKET_CATEGORY_NAME)
 
-    # Define permissões do canal ticket
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         discord.utils.get(guild.roles, id=STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True),
         ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     }
-
-    # Cria o canal de ticket na categoria
     ticket = await guild.create_text_channel(f"ticket-{ctx.author.name}", category=category, overwrites=overwrites)
-
-    # Cria embed bonito para avisar dentro do ticket
-    embed = discord.Embed(
-        title="Novo Ticket de Inscrição!",
-        description=f"{ctx.author.mention} abriu um ticket para inscrição de canal.\n\nPor favor, envie as informações do canal aqui ou aguarde a staff.",
-        color=0x1ABC9C
-    )
-    embed.set_footer(text="Equipe de Divulgação")
-    embed.set_thumbnail(url="https://i.imgur.com/your-image.png")  # Substitua por um link legal de thumbnail se quiser
-
-    await ticket.send(embed=embed)
-    await ctx.send(f"Ticket criado com sucesso! {ticket.mention}")
-
-
-@bot.command()
-@commands.has_role(STAFF_ROLE_ID)
-async def addcanal(ctx):
-    def check(m):
-        return m.author == ctx.author and isinstance(m.channel, discord.DMChannel)
-
-    try:
-        await ctx.author.send("Qual a plataforma do canal? (youtube, tiktok, instagram)")
-        plataforma = (await bot.wait_for('message', check=check, timeout=120)).content.lower()
-
-        await ctx.author.send("Qual o link do canal ou RSS?")
-        link = (await bot.wait_for('message', check=check, timeout=120)).content
-
-        await ctx.author.send("Qual o texto que deve aparecer no aviso de vídeo novo?")
-        texto = (await bot.wait_for('message', check=check, timeout=120)).content
-
-        async with aiosqlite.connect(DB) as db:
-            await db.execute(
-                "INSERT INTO canais (plataforma, link, texto_novo) VALUES (?, ?, ?)",
-                (plataforma, link, texto)
-            )
-            await db.commit()
-
-        await ctx.author.send(f"Canal '{plataforma}' adicionado com sucesso!")
-
-    except asyncio.TimeoutError:
-        await ctx.author.send("Você demorou demais para responder. Tente o comando novamente.")
+    await ticket.send(f"{ctx.author.mention} Abra o ticket para enviar seu canal para aprovação da staff com o comando `!addcanal` ou aguarde o staff responder aqui.")
+    await ctx.send(f"Ticket criado: {ticket.mention}")
 
 @bot.command()
 @commands.has_role(STAFF_ROLE_ID)
