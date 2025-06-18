@@ -134,20 +134,35 @@ async def lv(ctx):
 
 @bot.command()
 async def inscrever_se(ctx):
-    """Abre ticket para staff aprovar canal"""
+    """Abre ticket para staff aprovar canal com embed bonito dentro do ticket"""
     guild = ctx.guild
-    category = discord.utils.get(guild.categories, name=TICKET_CATEGORY_NAME)
+    category_id = 1382838633094053933
+    category = discord.utils.get(guild.categories, id=category_id)
     if not category:
-        category = await guild.create_category(TICKET_CATEGORY_NAME)
+        category = await guild.create_category("Tickets")
 
+    # Define permissões do canal ticket
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         discord.utils.get(guild.roles, id=STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True),
         ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     }
+
+    # Cria o canal de ticket na categoria
     ticket = await guild.create_text_channel(f"ticket-{ctx.author.name}", category=category, overwrites=overwrites)
-    await ticket.send(f"{ctx.author.mention} Abra o ticket para enviar seu canal para aprovação da staff com o comando `!addcanal` ou aguarde o staff responder aqui.")
-    await ctx.send(f"Ticket criado: {ticket.mention}")
+
+    # Cria embed bonito para avisar dentro do ticket
+    embed = discord.Embed(
+        title="Novo Ticket de Inscrição!",
+        description=f"{ctx.author.mention} abriu um ticket para inscrição de canal.\n\nPor favor, envie as informações do canal aqui ou aguarde a staff.",
+        color=0x1ABC9C
+    )
+    embed.set_footer(text="Equipe de Divulgação")
+    embed.set_thumbnail(url="https://i.imgur.com/your-image.png")  # Substitua por um link legal de thumbnail se quiser
+
+    await ticket.send(embed=embed)
+    await ctx.send(f"Ticket criado com sucesso! {ticket.mention}")
+
 
 @bot.command()
 @commands.has_role(STAFF_ROLE_ID)
