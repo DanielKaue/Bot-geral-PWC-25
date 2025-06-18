@@ -220,67 +220,6 @@ async def checar_videos():
         except Exception as e:
             print(f"Erro ao checar canal {cid}: {e}")
 
-@bot.command()
-async def ajuda(ctx):
-    # IDs dos cargos
-    cargo_membro = 1382505877790470337
-    cargo_membro_geral = 1382505875549323346
-    cargo_mod1 = 1382505875549323349
-    cargo_mod2 = 1382838597790470337
-
-    roles_ids = [role.id for role in ctx.author.roles]
-
-    embed = discord.Embed(
-        title="📚 Comandos disponíveis",
-        color=discord.Color.green()
-    )
-
-    # Comandos gerais
-    comandos_gerais = (
-        "`!ajuda` - Mostra esta mensagem\n"
-        "`!ip` - Mostra o IP e porta do servidor\n"
-        "`!canais` - Lista os canais aprovados para divulgação\n"
-        "`!inscrever` - Envia seu canal para a staff aprovar\n"
-    )
-
-    comandos_diversao = (
-        "`!ping` - Testa a latência do bot\n"
-        "`!userinfo @usuário` - Mostra informações do usuário\n"
-        "`!avatar @usuário` - Mostra o avatar do usuário\n"
-        "`!roll [lados]` - Rola um dado com N lados (padrão 6)\n"
-        "`!pix` - Pix para pagar a taxa de inscrição\n"
-        "`!serverinfo` - Mostra informações do servidor\n"
-    )
-
-    comandos_moderacao = (
-        "`!chat <n>` - Apaga mensagens do canal\n"
-        "`!criarserver` - Cria a estrutura do servidor\n"
-        "`!deletar` - Remove categorias, canais e cargos criados\n"
-        "`!lock` - Fecha o canal (sem permissão de envio)\n"
-        "`!unlock` - Reabre o canal\n"
-        "`!regrasdc` - Envia as regras do servidor\n"
-        "`!mods` - Lista os moderadores do servidor\n"
-        "`!inscrito` - Cria cargo de inscrito\n"
-        "`!shutdown` - Desliga o bot (somente dono)\n"
-    )
-
-    comandos_pixelmon = (
-        "`!fdg` - Mostra as 6 rodadas da fase de grupos\n"
-        "`!paises` - Envia o menu de seleção de países com autorole\n"
-    )
-
-    embed.add_field(name="Comandos Gerais", value=comandos_gerais, inline=False)
-    embed.add_field(name="Diversão", value=comandos_diversao, inline=False)
-
-    if cargo_mod1 in roles_ids or cargo_mod2 in roles_ids:
-        embed.add_field(name="Moderação", value=comandos_moderacao, inline=False)
-        embed.add_field(name="Pixelmon WC", value=comandos_pixelmon, inline=False)
-    elif cargo_membro_geral in roles_ids:
-        embed.add_field(name="Moderação", value=comandos_moderacao, inline=False)
-
-    await ctx.send(embed=embed)
-
-
 cargo_mod1 = 1382505875549323349
 cargo_mod2 = 1382838597790470337
 cargo_geral = 1382505875549323346
@@ -596,71 +535,63 @@ async def criarserver(ctx):
 @bot.command()
 async def ajuda(ctx):
     # IDs dos cargos
-    cargo_membro = 1382505877790470337  # O cargo extra de moderação que você pediu (corrigi para seu valor)
-    cargo_membro_geral = 1382505875549323346  # cargo membro (acesso básico)
-    cargo_mod1 = 1382505875549323349  # cargo mod 1
-    cargo_mod2 = 1382838597790470337  # cargo mod 2 (extra moderação)
+    cargo_membro = 1382505877790470337
+    cargo_membro_geral = 1382505875549323346
+    cargo_mod1 = 1382505875549323349
+    cargo_mod2 = 1382838597790470337
 
     roles_ids = [role.id for role in ctx.author.roles]
 
-    embed = discord.Embed(title="📚 Comandos disponíveis",
-                          color=discord.Color.green())
+    embed = discord.Embed(
+        title="📚 Comandos disponíveis",
+        color=discord.Color.green()
+    )
 
-    # Comandos gerais (sempre mostrar)
-    comandos_gerais = ("`!ajuda` - Mostra esta mensagem\n"
-                       "`!ip` - Mostra o ip e porta do servidor!\n"
-                       "`!canais` - Mostra os canais do servidor!\n"
-                       "`!lv` - Mostra o video mas recente dos canais\n"
-                       "`!inscrever` - Mande seu canal para participar do divulgação\n")
+    # Comandos gerais
+    comandos_gerais = (
+        "`!ajuda` - Mostra esta mensagem\n"
+        "`!ip` - Mostra o IP e porta do servidor\n"
+        "`!canais` - Lista os canais aprovados para divulgação\n"
+        "`!inscrever` - Envia seu canal para a staff aprovar\n"
+    )
 
-    # Diversão
     comandos_diversao = (
         "`!ping` - Testa a latência do bot\n"
         "`!userinfo @usuário` - Mostra informações do usuário\n"
         "`!avatar @usuário` - Mostra o avatar do usuário\n"
         "`!roll [lados]` - Rola um dado com N lados (padrão 6)\n"
         "`!pix` - Pix para pagar a taxa de inscrição\n"
-        "`!serverinfo` - Mostra informações do servidor\n")
+        "`!serverinfo` - Mostra informações do servidor\n"
+    )
 
-    # Moderação
     comandos_moderacao = (
         "`!chat <n>` - Apaga mensagens do canal\n"
         "`!criarserver` - Cria a estrutura do servidor\n"
         "`!deletar` - Remove categorias, canais e cargos criados\n"
-        "`!lock` - Fecha o canal, apenas permitindo visibilidade.\n"
-        "`!unlock` - Ativa o canal novamente.\n"
-        "`!regrasdc` - Manda a lista de regras do servidor.\n"
-        "`!mods` - Lista o mods do servidor.\n"
-        "`!inscrito` - Cria cargo inscrito.\n"
-        "`!shutdown` - Desliga o bot (somente dono)\n")
+        "`!lock` - Fecha o canal (sem permissão de envio)\n"
+        "`!unlock` - Reabre o canal\n"
+        "`!regrasdc` - Envia as regras do servidor\n"
+        "`!mods` - Lista os moderadores do servidor\n"
+        "`!inscrito` - Cria cargo de inscrito\n"
+        "`!shutdown` - Desliga o bot (somente dono)\n"
+    )
 
-    # Pixelmon WC
     comandos_pixelmon = (
         "`!fdg` - Mostra as 6 rodadas da fase de grupos\n"
-        "`!paises` - Envia mensagem de seleção de país com autorole\n")
+        "`!paises` - Envia o menu de seleção de países com autorole\n"
+    )
 
-    # Adiciona sempre gerais e diversão
-    embed.add_field(name="Comandos Gerais",
-                    value=comandos_gerais,
-                    inline=False)
+    embed.add_field(name="Comandos Gerais", value=comandos_gerais, inline=False)
     embed.add_field(name="Diversão", value=comandos_diversao, inline=False)
 
-    # Verifica se o usuário é mod (qualquer um dos 2 cargos de moderação)
     if cargo_mod1 in roles_ids or cargo_mod2 in roles_ids:
-        embed.add_field(name="Moderação",
-                        value=comandos_moderacao,
-                        inline=False)
-        embed.add_field(name="Pixelmon WC",
-                        value=comandos_pixelmon,
-                        inline=False)
-    # Se só for membro, mostra só moderação (sem pixelmon)
+        embed.add_field(name="Moderação", value=comandos_moderacao, inline=False)
+        embed.add_field(name="Pixelmon WC", value=comandos_pixelmon, inline=False)
     elif cargo_membro_geral in roles_ids:
-        embed.add_field(name="Moderação",
-                        value=comandos_moderacao,
-                        inline=False)
-    # Se não tiver nada, não adiciona moderação nem pixelmon
+        embed.add_field(name="Moderação", value=comandos_moderacao, inline=False)
 
     await ctx.send(embed=embed)
+
 
 
 # Comando !ping
