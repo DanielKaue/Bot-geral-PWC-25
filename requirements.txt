@@ -3,3 +3,4 @@ flask
 aiohttp
 feedparser
 aiosqlite
+googletrans

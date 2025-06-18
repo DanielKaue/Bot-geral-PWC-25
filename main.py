@@ -12,10 +12,10 @@ import feedparser
 from discord.ext import commands, tasks
 from discord.ui import View, Button
 from discord import Interaction
-
+from googletrans import Translator
 
 warns = {}
-
+translator = Translator()
 app = Flask('')
 
 
@@ -557,6 +557,7 @@ async def ajuda(ctx):
         "`!ip` - Mostra o IP e porta do servidor\n"
         "`!canais` - Lista os canais aprovados para divulgação\n"
         "`!inscrever` - Envia seu canal para a staff aprovar\n"
+        "`!traduzir (de lingua) (para lingua)` - Traduz msg q vc estiver RESPONDENDO\n"
     )
 
     comandos_diversao = (
@@ -990,7 +991,37 @@ async def mods(ctx):
     embed.set_footer(text="Em breve mais mods serão adicionados!")
     await ctx.send(embed=embed)
 
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
 
+    try:
+        traducao = translator.translate(message.content, src='pt', dest='en')
+        if traducao.text.lower() != message.content.lower():
+            await message.channel.send(f"💬 Translate: {traducao.text}")
+    except Exception as e:
+        print(f"[Erro ao traduzir msg automática] {e}")
+
+    await bot.process_commands(message)  # permite comandos ainda funcionarem
+
+@bot.command()
+async def traduzir(ctx, de: str = None, para: str = None):
+    if not ctx.message.reference:
+        return await ctx.send("❌ Você precisa responder a uma mensagem para traduzir.")
+
+    if not de or not para:
+        return await ctx.send("❌ Use: `!traduzir <de> <para>`\nExemplo: `!traduzir pt en` para traduzir do português para o inglês.")
+
+    try:
+        mensagem_original = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+        texto_original = mensagem_original.content
+
+        resultado = translator.translate(texto_original, src=de, dest=para)
+        await ctx.send(f"🌍 Tradução (`{de}` → `{para}`): {resultado.text}")
+    except Exception as e:
+        await ctx.send("❌ Erro ao traduzir. Verifique os códigos de idioma (ex: pt, en, es, ja, etc).")
+        print(f"[Erro ao traduzir] {e}")
 
 keep_alive()
 bot.run(os.getenv("TOKEN"))
