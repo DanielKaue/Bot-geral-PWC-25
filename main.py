@@ -35,9 +35,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 DB = "divulgacao.db"
 STAFF_ROLE_ID = 1382505875549323349
 TICKET_CATEGORY_NAME = "Tickets"
-SEU_CANAL_DE_DIVULGACAO_ID = 1382838641482530938
+SEU_CANAL_DE_DIVULGACAO_ID = 1382838641482530938  # Canal onde o bot postará avisos
 
-# ----- Banco de dados -----
 async def init_db():
     async with aiosqlite.connect(DB) as db:
         await db.execute("""
@@ -59,11 +58,47 @@ async def init_db():
         """)
         await db.commit()
 
+# ----- Eventos -----
 @bot.event
 async def on_ready():
     print(f"Bot online como {bot.user}")
     await init_db()
     checar_videos.start()
+
+@bot.command()
+@commands.has_role(STAFF_ROLE_ID)
+async def staff(ctx):
+    """Comando para abrir ajuda exclusiva da staff"""
+    await ctx.send(f"{ctx.author.mention} Aqui é o canal de ajuda da staff. Use `c!addcanal` para adicionar canais, `c!removecanal` para remover.")
+
+@bot.command()
+@commands.has_role(STAFF_ROLE_ID)
+async def addcanal(ctx):
+    """Adiciona canal novo perguntando dados via DM"""
+    def check(m):
+        return m.author == ctx.author and isinstance(m.channel, discord.DMChannel)
+
+    try:
+        await ctx.author.send("Qual a plataforma do canal? (youtube, tiktok, instagram)")
+        plataforma = (await bot.wait_for('message', check=check, timeout=120)).content.lower()
+
+        await ctx.author.send("Qual o link do canal ou RSS?")
+        link = (await bot.wait_for('message', check=check, timeout=120)).content
+
+        await ctx.author.send("Qual o texto que deve aparecer no aviso de vídeo novo?")
+        texto = (await bot.wait_for('message', check=check, timeout=120)).content
+
+        async with aiosqlite.connect(DB) as db:
+            await db.execute(
+                "INSERT INTO canais (plataforma, link, texto_novo) VALUES (?, ?, ?)",
+                (plataforma, link, texto)
+            )
+            await db.commit()
+
+        await ctx.author.send(f"Canal {plataforma} adicionado com sucesso!")
+
+    except asyncio.TimeoutError:
+        await ctx.author.send("Tempo esgotado para responder. Tente o comando novamente.")
 
 @bot.command()
 async def canais(ctx):
@@ -105,26 +140,18 @@ async def inscrever_se(ctx):
     if not category:
         category = await guild.create_category(TICKET_CATEGORY_NAME)
 
-    # Cria o canal privado só pra staff + autor da inscrição
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         discord.utils.get(guild.roles, id=STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True),
         ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     }
     ticket = await guild.create_text_channel(f"ticket-{ctx.author.name}", category=category, overwrites=overwrites)
-    await ticket.send(f"{ctx.author.mention} Abra o ticket para enviar seu canal para aprovação da staff com o comando `c!addcanal` ou aguarde o staff responder aqui.")
+    await ticket.send(f"{ctx.author.mention} Abra o ticket para enviar seu canal para aprovação da staff com o comando `!addcanal` ou aguarde o staff responder aqui.")
     await ctx.send(f"Ticket criado: {ticket.mention}")
 
 @bot.command()
 @commands.has_role(STAFF_ROLE_ID)
-async def staff(ctx):
-    """Comando para abrir ajuda exclusiva da staff"""
-    await ctx.send(f"{ctx.author.mention} Aqui é o canal de ajuda da staff. Use `c!addcanal` para adicionar canais, `c!removecanal` para remover.")
-
-@bot.command()
-@commands.has_role(STAFF_ROLE_ID)
 async def addcanal(ctx):
-    """Adiciona canal novo perguntando dados via DM"""
     def check(m):
         return m.author == ctx.author and isinstance(m.channel, discord.DMChannel)
 
@@ -145,10 +172,83 @@ async def addcanal(ctx):
             )
             await db.commit()
 
-        await ctx.author.send(f"Canal {plataforma} adicionado com sucesso!")
+        await ctx.author.send(f"Canal '{plataforma}' adicionado com sucesso!")
 
     except asyncio.TimeoutError:
-        await ctx.author.send("Tempo esgotado para responder. Tente o comando novamente.")
+        await ctx.author.send("Você demorou demais para responder. Tente o comando novamente.")
+
+@bot.command()
+@commands.has_role(STAFF_ROLE_ID)
+async def removecanal(ctx, canal_id: int):
+    async with aiosqlite.connect(DB) as db:
+        cursor = await db.execute("SELECT id FROM canais WHERE id = ?", (canal_id,))
+        canal = await cursor.fetchone()
+        if not canal:
+            await ctx.send(f"Canal com ID {canal_id} não encontrado.")
+            return
+
+        await db.execute("DELETE FROM canais WHERE id = ?", (canal_id,))
+        await db.commit()
+        await ctx.send(f"Canal com ID {canal_id} removido com sucesso.")
+
+# ----- Tarefa para checar vídeos novos (exemplo para YouTube com feed RSS) -----
+@tasks.loop(minutes=5)
+async def checar_videos():
+    async with aiosqlite.connect(DB) as db:
+        cursor = await db.execute("SELECT id, plataforma, link, texto_novo, ultimo_video_link FROM canais WHERE plataforma = 'youtube'")
+        canais = await cursor.fetchall()
+
+    canal_divulgacao = bot.get_channel(SEU_CANAL_DE_DIVULGACAO_ID)
+    if not canal_divulgacao:
+        print("Canal de divulgação não encontrado.")
+        return
+
+    for cid, plataforma, link, texto_novo, ultimo_video_link in canais:
+        try:
+            feed = feedparser.parse(link)
+            if not feed.entries:
+                continue
+            novo_video = feed.entries[0]
+            video_link = novo_video.link
+
+            if video_link != ultimo_video_link:
+                mensagem = f"{texto_novo}\n{video_link}"
+                await canal_divulgacao.send(mensagem)
+
+                # Atualiza último vídeo no banco
+                async with aiosqlite.connect(DB) as db:
+                    await db.execute("UPDATE canais SET ultimo_video_link = ? WHERE id = ?", (video_link, cid))
+                    await db.commit()
+
+        except Exception as e:
+            print(f"Erro ao checar canal {cid}: {e}")
+
+@bot.command()
+@commands.has_role(STAFF_ROLE_ID)
+async def staff(ctx):
+    guild = ctx.guild
+    category = discord.utils.get(guild.categories, name=TICKET_CATEGORY_NAME)
+    if not category:
+        category = await guild.create_category(TICKET_CATEGORY_NAME)
+
+    nome_canal = f"staff-{ctx.author.name}".lower()
+
+    # Verifica se já existe um canal para essa staff
+    canal_existente = discord.utils.get(category.channels, name=nome_canal)
+    if canal_existente:
+        await ctx.send(f"Você já tem um canal de staff aberto: {canal_existente.mention}")
+        return
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        discord.utils.get(guild.roles, id=STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True),
+        ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    }
+
+    canal = await guild.create_text_channel(nome_canal, category=category, overwrites=overwrites)
+    await canal.send(f"Canal de ajuda da staff criado por {ctx.author.mention}. Use este espaço para discutir e ajudar a equipe.")
+    await ctx.send(f"Canal de staff criado: {canal.mention}")
+
 
 @bot.command()
 @commands.has_role(STAFF_ROLE_ID)
@@ -526,7 +626,8 @@ async def ajuda(ctx):
     comandos_gerais = ("`!ajuda` - Mostra esta mensagem\n"
                        "`!ip` - Mostra o ip e porta do servidor!\n"
                        "`!canais` - Mostra os canais do servidor!\n"
-                       "`!lv` - Mostra o video mas recente dos canais\n")
+                       "`!lv` - Mostra o video mas recente dos canais\n"
+                       "`!inscrever-se` - Mande seu canal para participar do divulgação\n")
 
     # Diversão
     comandos_diversao = (
