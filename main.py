@@ -33,7 +33,7 @@ def keep_alive():
     t.start()
 
 DB_PATH = "pwc_tabela.db"
-MOD_ROLE_ID = 138250587554932334
+MOD_ROLE_ID = 1382505875549323349
 
 PAISES = sorted([
     ("🇩🇪", "Alemanha"),
