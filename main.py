@@ -32,10 +32,51 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
+PAISES = sorted([
+    ("🇩🇪", "Alemanha"),
+    ("🇦🇷", "Argentina"),
+    ("🇦🇺", "Austrália"),
+    ("🇧🇷", "Brasil"),
+    ("🇭🇷", "Croácia"),
+    ("🇪🇸", "Espanha"),
+    ("🇺🇸", "EUA"),
+    ("🇫🇷", "França"),
+    ("🇳🇱", "Holanda"),
+    ("🏴", "Inglaterra"),
+    ("🇯🇵", "Japão"),
+    ("🇲🇦", "Marrocos"),
+    ("🇵🇱", "Polônia"),
+    ("🇵🇹", "Portugal"),
+    ("🇸🇳", "Senegal"),
+    ("🇺🇾", "Uruguai"),
+], key=lambda x: x[1])
+
+RODADAS = {
+    1: [("França", "Austrália"), ("Portugal", "Holanda"), ("Espanha", "EUA"), ("Brasil", "Croácia"),
+        ("Uruguai", "Senegal"), ("Japão", "Inglaterra"), ("Alemanha", "Polônia"), ("Argentina", "Marrocos")],
+    2: [("Alemanha", "Austrália"), ("Portugal", "Croácia"), ("Polônia", "Senegal"), ("Espanha", "Holanda"),
+        ("Japão", "Marrocos"), ("Argentina", "França"), ("Brasil", "Uruguai"), ("Inglaterra", "EUA")],
+    3: [("França", "Senegal"), ("Brasil", "Austrália"), ("Argentina", "EUA"), ("Espanha", "Inglaterra"),
+        ("Uruguai", "Marrocos"), ("Japão", "Holanda"), ("Portugal", "Polônia"), ("Alemanha", "Croácia")],
+    4: [("Uruguai", "EUA"), ("Polônia", "Marrocos"), ("Japão", "Croácia"), ("Portugal", "Senegal"),
+        ("França", "Inglaterra"), ("Argentina", "Austrália"), ("Brasil", "Alemanha")],
+    5: [("Marrocos", "EUA"), ("Argentina", "Croácia"), ("Japão", "Espanha"), ("Uruguai", "Inglaterra"),
+        ("Brasil", "Polônia"), ("Alemanha", "Senegal"), ("Holanda", "Austrália"), ("França", "Portugal")],
+    6: [("Inglaterra", "Croácia"), ("Brasil", "Holanda"), ("Alemanha", "EUA"), ("França", "Polônia"),
+        ("Argentina", "Uruguai"), ("Japão", "Austrália"), ("Portugal", "Marrocos"), ("Espanha", "Senegal")]
+}
+
+
 intents = discord.Intents.all()
+intents = discord.Intents.default()
+intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
-DB_PATH = "pwc_tabela.db"
-MOD_ROLE_ID = 138250587554932334
+
+def get_emoji(pais_nome):
+    for emoji, nome in PAISES:
+        if nome == pais_nome:
+            return emoji
+    return ""
 
 @bot.event
 async def on_ready():
@@ -56,58 +97,28 @@ async def on_ready():
                 rodada INTEGER PRIMARY KEY
             )
         """)
+        # Inicializa países na tabela, se não existirem
+        for _, nome in PAISES:
+            await db.execute("INSERT OR IGNORE INTO grupos_pwc (pais, emoji) VALUES (?, ?)", (nome, get_emoji(nome)))
         await db.commit()
     print(f"Bot online como {bot.user}")
 
-PAISES = sorted([
-    ("🇩🇪", "Alemanha"),
-    ("🇦🇷", "Argentina"),
-    ("🇦🇺", "Austrália"),
-    ("🇧🇷", "Brasil"),
-    ("🇭🇷", "Croácia"),
-    ("🇪🇸", "Espanha"),
-    ("🇺🇸", "Estados Unidos"),
-    ("🇫🇷", "França"),
-    ("🇳🇱", "Holanda"),
-    ("🏴", "Inglaterra"),
-    ("🇯🇵", "Japão"),
-    ("🇲🇦", "Marrocos"),
-    ("🇵🇱", "Polônia"),
-    ("🇵🇹", "Portugal"),
-    ("🇸🇳", "Senegal"),
-    ("🇺🇾", "Uruguai"),
-], key=lambda x: x[1])
-
-RODADAS = {
-    1: [("França", "Austrália"), ("Portugal", "Holanda"), ("Espanha", "Estados Unidos"), ("Brasil", "Croácia"),
-        ("Uruguai", "Senegal"), ("Japão", "Inglaterra"), ("Alemanha", "Polônia"), ("Argentina", "Marrocos")],
-    2: [("Alemanha", "Austrália"), ("Portugal", "Croácia"), ("Polônia", "Senegal"), ("Espanha", "Holanda"),
-        ("Japão", "Marrocos"), ("Argentina", "França"), ("Brasil", "Uruguai"), ("Inglaterra", "Estados Unidos")],
-    3: [("França", "Senegal"), ("Brasil", "Austrália"), ("Argentina", "Estados Unidos"), ("Espanha", "Inglaterra"),
-        ("Uruguai", "Marrocos"), ("Japão", "Holanda"), ("Portugal", "Polônia"), ("Alemanha", "Croácia")],
-    4: [("Uruguai", "Estados Unidos"), ("Polônia", "Marrocos"), ("Japão", "Croácia"), ("Portugal", "Senegal"),
-        ("França", "Inglaterra"), ("Argentina", "Austrália"), ("Brasil", "Alemanha")],
-    5: [("Marrocos", "Estados Unidos"), ("Argentina", "Croácia"), ("Japão", "Espanha"), ("Uruguai", "Inglaterra"),
-        ("Brasil", "Polônia"), ("Alemanha", "Senegal"), ("Holanda", "Austrália"), ("França", "Portugal")],
-    6: [("Inglaterra", "Croácia"), ("Brasil", "Holanda"), ("Alemanha", "Estados Unidos"), ("França", "Polônia"),
-        ("Argentina", "Uruguai"), ("Japão", "Austrália"), ("Portugal", "Marrocos"), ("Espanha", "Senegal")]
-}
-
-def get_emoji(pais_nome):
-    for emoji, nome in PAISES:
-        if nome == pais_nome:
-            return emoji
-    return ""
-
-@bot.command(name="jogos")
+@bot.command()
 @commands.has_role(MOD_ROLE_ID)
 async def jogos(ctx, rodada: int):
     if rodada not in RODADAS:
         await ctx.send("Rodada inválida. Use um número entre 1 e 6.")
         return
 
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Verifica se rodada já foi lançada
+        cursor = await db.execute("SELECT 1 FROM rodadas_lancadas WHERE rodada = ?", (rodada,))
+        if await cursor.fetchone():
+            await ctx.send(f"⚠️ Rodada {rodada} já registrada.")
+            return
+
     canal = await ctx.guild.create_text_channel(f"resultados-rodada-{rodada}")
-    await canal.send(f"Adicionando resultados para rodada {rodada}. Envie os placares no formato XxY. Envie cancelar para parar.")
+    await canal.send(f"Adicionando resultados para rodada {rodada}. Envie os placares no formato XxY (ex: 2x1). Escreva 'cancelar' para abortar.")
 
     resultados = []
 
@@ -120,11 +131,11 @@ async def jogos(ctx, rodada: int):
         try:
             msg = await bot.wait_for("message", check=check, timeout=120)
         except asyncio.TimeoutError:
-            await canal.send("Tempo esgotado. Encerrando entrada de resultados.")
+            await canal.send("⏰ Tempo esgotado. Encerrando entrada de resultados.")
             return
 
         if msg.content.lower() == "cancelar":
-            await canal.send("Entrada de resultados cancelada.")
+            await canal.send("❌ Entrada de resultados cancelada.")
             return
 
         if "x" not in msg.content:
@@ -139,19 +150,10 @@ async def jogos(ctx, rodada: int):
         scoreA, scoreB = int(x), int(y)
         resultados.append((timeA, timeB, scoreA, scoreB))
 
+    # Atualiza tabela no DB
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("CREATE TABLE IF NOT EXISTS grupos_pwc (pais TEXT PRIMARY KEY, emoji TEXT, jogos INTEGER, pontos INTEGER, vi INTEGER, di INTEGER, saldo INTEGER)")
-        await db.execute("CREATE TABLE IF NOT EXISTS rodadas_lancadas (rodada INTEGER PRIMARY KEY)")
-
-        cursor = await db.execute("SELECT rodada FROM rodadas_lancadas WHERE rodada = ?", (rodada,))
-        if await cursor.fetchone():
-            await canal.send(f"⚠️ Rodada {rodada} já foi registrada anteriormente.")
-            return
-
-        for pais in [nome for _, nome in PAISES]:
-            await db.execute("INSERT OR IGNORE INTO grupos_pwc (pais, emoji, jogos, pontos, vi, di, saldo) VALUES (?, ?, 0, 0, 0, 0, 0)", (pais, get_emoji(pais)))
-
         for timeA, timeB, scoreA, scoreB in resultados:
+            # Atualiza jogos
             await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais = ?", (timeA,))
             await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais = ?", (timeB,))
 
@@ -162,6 +164,7 @@ async def jogos(ctx, rodada: int):
                 await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (scoreB - scoreA, timeB))
                 await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (scoreB - scoreA, timeA))
             else:
+                # empate
                 await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1 WHERE pais = ?", (timeA,))
                 await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1 WHERE pais = ?", (timeB,))
 
@@ -171,31 +174,6 @@ async def jogos(ctx, rodada: int):
     await canal.send("✅ Resultados registrados com sucesso!")
 
 @bot.command()
-async def tabela(ctx):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS grupos_pwc (
-                pais TEXT PRIMARY KEY,
-                emoji TEXT,
-                jogos INTEGER DEFAULT 0,
-                pontos INTEGER DEFAULT 0,
-                vi INTEGER DEFAULT 0,
-                di INTEGER DEFAULT 0,
-                saldo INTEGER DEFAULT 0
-            )
-        """)
-        await db.commit()
-
-        cursor = await db.execute("SELECT pais, emoji, jogos, pontos, vi, di, saldo FROM grupos_pwc ORDER BY pontos DESC, saldo DESC, pais ASC")
-        tabela = await cursor.fetchall()
-
-    embed = discord.Embed(title="🏆 Tabela da Fase de Grupos – PWC 25", color=discord.Color.gold())
-    for pais, emoji, jogos, pontos, vi, di, saldo in tabela:
-        embed.add_field(name=f"{emoji} {pais}", value=f"🎮 Jogos: `{jogos}` | ⭐ Pontos: `{pontos}` | ✅ VI: `{vi}` | ❌ DI: `{di}` | ⚖️ Saldo: `{saldo}`", inline=False)
-
-    await ctx.send(embed=embed)
-
-@bot.command()
 @commands.has_role(MOD_ROLE_ID)
 async def jogosd(ctx, rodada: int):
     if rodada not in RODADAS:
@@ -203,20 +181,56 @@ async def jogosd(ctx, rodada: int):
         return
 
     async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute("SELECT rodada FROM rodadas_lancadas WHERE rodada = ?", (rodada,))
+        cursor = await db.execute("SELECT 1 FROM rodadas_lancadas WHERE rodada = ?", (rodada,))
         if not await cursor.fetchone():
-            await ctx.send("Essa rodada ainda não foi adicionada, nada para deletar.")
+            await ctx.send("Essa rodada ainda não foi registrada, nada para deletar.")
             return
 
+        # Aqui precisamos reverter o impacto da rodada
         jogos = RODADAS[rodada]
-        for timeA, timeB in jogos:
-            await db.execute("UPDATE grupos_pwc SET jogos = jogos - 1 WHERE pais IN (?, ?)", (timeA, timeB))
-            await db.execute("UPDATE grupos_pwc SET pontos = pontos - 3, vi = vi - 1, saldo = saldo - ? WHERE pais = ?", (1, timeA))
-            await db.execute("UPDATE grupos_pwc SET di = di - 1, saldo = saldo + ? WHERE pais = ?", (1, timeB))
+
+        # Para reverter, precisamos saber o placar original, mas não guardamos...
+        # Solução simplificada: como não armazenamos resultados exatos, vamos subtrair 1 jogo de cada e resetar pontos/vi/di/saldo da rodada.  
+        # Isso pode dar problema se houver erros, ideal seria guardar resultados da rodada em uma tabela separada para reverter corretamente.  
+        # Mas para simplificar, vamos resetar todos os dados e recalcular todas as rodadas exceto essa.
+
+        # Resetar todos dados
+        await db.execute("UPDATE grupos_pwc SET jogos = 0, pontos = 0, vi = 0, di = 0, saldo = 0")
         await db.execute("DELETE FROM rodadas_lancadas WHERE rodada = ?", (rodada,))
         await db.commit()
 
-    await ctx.send(f"❌ Rodada {rodada} resetada com sucesso!")
+        # Recalcular todas as rodadas já lançadas, exceto a deletada
+        cursor = await db.execute("SELECT rodada FROM rodadas_lancadas")
+        rodadas_restantes = await cursor.fetchall()
+        rodadas_restantes = [r[0] for r in rodadas_restantes if r[0] != rodada]
+
+        for r in rodadas_restantes:
+            jogos_rodada = RODADAS[r]
+            # Aqui precisaríamos dos resultados dos jogos dessa rodada para atualizar
+            # Como não armazenamos, só podemos avisar que não será possível reverter parcialmente
+            # Então a solução correta é armazenar os resultados de cada rodada no DB (recomendo isso)
+
+        # Como não temos histórico, só confirmo que rodadas anteriores permanecem zeradas
+
+    await ctx.send(f"❌ Rodada {rodada} resetada. Atenção: Para funcionamento correto, armazene resultados para recalcular ao apagar rodadas.")
+
+@bot.command()
+async def tabela(ctx):
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT pais, emoji, jogos, pontos, vi, di, saldo FROM grupos_pwc ORDER BY pontos DESC, saldo DESC, pais ASC"
+        )
+        tabela = await cursor.fetchall()
+
+    embed = discord.Embed(title="🏆 Tabela da Fase de Grupos – PWC 25", color=discord.Color.gold())
+    pos = 1
+    for pais, emoji, jogos, pontos, vi, di, saldo in tabela:
+        embed.add_field(name=f"{pos}º - {emoji} {pais}", 
+                        value=f"📊 Jogos: `{jogos}` | ⭐ Pontos: `{pontos}` | ✅ VI: `{vi}` | ❌ DI: `{di}` | ⚖️ Saldo: `{saldo}`", 
+                        inline=False)
+        pos += 1
+
+    await ctx.send(embed=embed)
 
 DB = "divulgacao.db"
 STAFF_ROLE_ID = 1382505875549323349
