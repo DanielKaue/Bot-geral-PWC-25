@@ -118,7 +118,6 @@ rodadas = {
     ]
 }
 
-# Função para pegar emoji do país
 def get_emoji(pais_nome):
     for emoji, nome in PAISES:
         if nome == pais_nome:
@@ -129,15 +128,16 @@ def get_emoji(pais_nome):
 async def tabela(ctx):
     """Exibe a tabela da fase de grupos"""
     async with aiosqlite.connect("pwc_tabela.db") as db:
+        # Criação da tabela grupos_pwc com coluna emoji
         await db.execute("""
             CREATE TABLE IF NOT EXISTS grupos_pwc (
                 pais TEXT PRIMARY KEY,
                 emoji TEXT,
-                jogos INTEGER,
-                pontos INTEGER,
-                vi INTEGER,
-                di INTEGER,
-                saldo INTEGER
+                jogos INTEGER DEFAULT 0,
+                pontos INTEGER DEFAULT 0,
+                vi INTEGER DEFAULT 0,
+                di INTEGER DEFAULT 0,
+                saldo INTEGER DEFAULT 0
             )
         """)
         await db.execute("""
@@ -147,12 +147,12 @@ async def tabela(ctx):
         """)
         await db.commit()
 
-        # Inicializa países se ainda não existem
+        # Insere países com emoji, se não existirem ainda
         for emoji, nome in PAISES:
             cursor = await db.execute("SELECT pais FROM grupos_pwc WHERE pais = ?", (nome,))
             exists = await cursor.fetchone()
             if not exists:
-                await db.execute("INSERT INTO grupos_pwc VALUES (?, ?, 0, 0, 0, 0, 0)", (nome, emoji))
+                await db.execute("INSERT INTO grupos_pwc (pais, emoji) VALUES (?, ?)", (nome, emoji))
         await db.commit()
 
         cursor = await db.execute("SELECT * FROM grupos_pwc ORDER BY pais ASC")
@@ -177,10 +177,10 @@ async def tabela(ctx):
     embed.set_footer(text="PWC 25 • Sistema de Pontos Corridos")
     await ctx.send(embed=embed)
 
-@bot.command()
+@bot.command(name="jogos")
 @commands.has_role(MOD_ROLE_ID)
-async def jogos_add_resultados(ctx, rodada: int):
-    print(f"[DEBUG] Comando jogos_add_resultados chamado por {ctx.author} para rodada {rodada}")
+async def jogos(ctx, rodada: int):
+    print(f"[DEBUG] Comando jogos chamado por {ctx.author} para rodada {rodada}")
 
     if ctx.guild is None:
         await ctx.send("Este comando só pode ser usado em servidores.")
@@ -190,7 +190,6 @@ async def jogos_add_resultados(ctx, rodada: int):
         await ctx.send(f"Rodada {rodada} inválida. Use um número entre 1 e 6.")
         return
 
-    # Verifica se rodada já foi lançada
     async with aiosqlite.connect("pwc_tabela.db") as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS rodadas_lancadas (
@@ -232,7 +231,7 @@ async def jogos_add_resultados(ctx, rodada: int):
         resultados = []
 
         for i, (timeA, timeB) in enumerate(rodadas[rodada], 1):
-            msg = await canal_temp.send(
+            await canal_temp.send(
                 f"**Jogo {i}**\n{get_emoji(timeA)} {timeA} x {get_emoji(timeB)} {timeB}\n"
                 f"Digite o placar (exemplo: 2x1):"
             )
@@ -254,14 +253,12 @@ async def jogos_add_resultados(ctx, rodada: int):
 
             if "x" not in resposta.content:
                 await canal_temp.send("Formato inválido. Por favor envie no formato `XxY` (exemplo: 2x1). Tente novamente.")
-                # volta uma iteração
-                i -= 1
+                # repete o jogo atual
                 continue
 
             partes = resposta.content.lower().split("x")
             if len(partes) != 2 or not partes[0].isdigit() or not partes[1].isdigit():
                 await canal_temp.send("Formato inválido. Use números inteiros, ex: 2x1. Tente novamente.")
-                i -= 1
                 continue
 
             scoreA, scoreB = int(partes[0]), int(partes[1])
@@ -274,6 +271,7 @@ async def jogos_add_resultados(ctx, rodada: int):
             else:
                 await canal_temp.send(f"Resultado final: Empate entre {timeA} e {timeB} ({scoreA}x{scoreB}).")
 
+        # Atualiza banco
         async with aiosqlite.connect("pwc_tabela.db") as db:
             for timeA, timeB, scoreA, scoreB in resultados:
                 for time in [timeA, timeB]:
@@ -303,9 +301,8 @@ async def jogos_add_resultados(ctx, rodada: int):
         except:
             pass
 
-# Tratamento para erro de falta de cargo:
-@jogos_add_resultados.error
-async def jogos_add_resultados_error(ctx, error):
+@jogos.error
+async def jogos_error(ctx, error):
     if isinstance(error, commands.MissingRole):
         await ctx.send("Você não tem permissão para usar este comando.")
 
