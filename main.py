@@ -61,7 +61,65 @@ PAISES = sorted([
 ], key=lambda x: x[1])
 
 rodadas = {
-    # ... coloque seu dicionário rodadas aqui (igual ao seu) ...
+    1: [
+        ("França", "Austrália"),
+        ("Portugal", "Holanda"),
+        ("Espanha", "Estados Unidos"),
+        ("Brasil", "Croácia"),
+        ("Uruguai", "Senegal"),
+        ("Japão", "Inglaterra"),
+        ("Alemanha", "Polônia"),
+        ("Argentina", "Marrocos")
+    ],
+    2: [
+        ("Alemanha", "Austrália"),
+        ("Portugal", "Croácia"),
+        ("Polônia", "Senegal"),
+        ("Espanha", "Holanda"),
+        ("Japão", "Marrocos"),
+        ("Argentina", "França"),
+        ("Brasil", "Uruguai"),
+        ("Inglaterra", "Estados Unidos")
+    ],
+    3: [
+        ("França", "Senegal"),
+        ("Brasil", "Austrália"),
+        ("Argentina", "Estados Unidos"),
+        ("Espanha", "Inglaterra"),
+        ("Uruguai", "Marrocos"),
+        ("Japão", "Holanda"),
+        ("Portugal", "Polônia"),
+        ("Alemanha", "Croácia")
+    ],
+    4: [
+        ("Uruguai", "Estados Unidos"),
+        ("Polônia", "Marrocos"),
+        ("Japão", "Croácia"),
+        ("Portugal", "Senegal"),
+        ("França", "Inglaterra"),
+        ("Argentina", "Austrália"),
+        ("Brasil", "Alemanha")
+    ],
+    5: [
+        ("Marrocos", "Estados Unidos"),
+        ("Argentina", "Croácia"),
+        ("Japão", "Espanha"),
+        ("Uruguai", "Inglaterra"),
+        ("Brasil", "Polônia"),
+        ("Alemanha", "Senegal"),
+        ("Holanda", "Austrália"),
+        ("França", "Portugal")
+    ],
+    6: [
+        ("Inglaterra", "Croácia"),
+        ("Brasil", "Holanda"),
+        ("Alemanha", "Estados Unidos"),
+        ("França", "Polônia"),
+        ("Argentina", "Uruguai"),
+        ("Japão", "Austrália"),
+        ("Portugal", "Marrocos"),
+        ("Espanha", "Senegal")
+    ]
 }
 
 def get_emoji(pais_nome):
