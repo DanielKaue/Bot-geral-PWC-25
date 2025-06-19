@@ -34,9 +34,30 @@ def keep_alive():
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
-
-MOD_ROLE_ID = 1382505875549323349
 DB_PATH = "pwc_tabela.db"
+MOD_ROLE_ID = 138250587554932334
+
+@bot.event
+async def on_ready():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS grupos_pwc (
+                pais TEXT PRIMARY KEY,
+                emoji TEXT,
+                jogos INTEGER DEFAULT 0,
+                pontos INTEGER DEFAULT 0,
+                vi INTEGER DEFAULT 0,
+                di INTEGER DEFAULT 0,
+                saldo INTEGER DEFAULT 0
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS rodadas_lancadas (
+                rodada INTEGER PRIMARY KEY
+            )
+        """)
+        await db.commit()
+    print(f"Bot online como {bot.user}")
 
 PAISES = sorted([
     ("🇩🇪", "Alemanha"),
@@ -86,7 +107,7 @@ async def jogos(ctx, rodada: int):
         return
 
     canal = await ctx.guild.create_text_channel(f"resultados-rodada-{rodada}")
-    await canal.send(f"Adicionando resultados para rodada {rodada}. Envie os placares no formato `XxY`. Envie `cancelar` para parar.")
+    await canal.send(f"Adicionando resultados para rodada {rodada}. Envie os placares no formato XxY. Envie cancelar para parar.")
 
     resultados = []
 
@@ -107,7 +128,7 @@ async def jogos(ctx, rodada: int):
             return
 
         if "x" not in msg.content:
-            await canal.send("Formato inválido. Use `XxY`. Pulei este jogo.")
+            await canal.send("Formato inválido. Use XxY. Pulei este jogo.")
             continue
 
         x, y = msg.content.lower().split("x")
@@ -149,8 +170,8 @@ async def jogos(ctx, rodada: int):
 
     await canal.send("✅ Resultados registrados com sucesso!")
 
-@bot.event
-async def on_ready():
+@bot.command()
+async def tabela(ctx):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS grupos_pwc (
@@ -163,30 +184,16 @@ async def on_ready():
                 saldo INTEGER DEFAULT 0
             )
         """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS rodadas_lancadas (
-                rodada INTEGER PRIMARY KEY
-            )
-        """)
-        for emoji, nome in PAISES:
-            cursor = await db.execute("SELECT pais FROM grupos_pwc WHERE pais = ?", (nome,))
-            if not await cursor.fetchone():
-                await db.execute("INSERT INTO grupos_pwc (pais, emoji) VALUES (?, ?)", (nome, emoji))
         await db.commit()
-    print(f"Bot conectado como {bot.user}")
 
-
-@bot.command()
-async def tabela(ctx):
-    async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("SELECT pais, emoji, jogos, pontos, vi, di, saldo FROM grupos_pwc ORDER BY pontos DESC, saldo DESC, pais ASC")
         tabela = await cursor.fetchall()
 
     embed = discord.Embed(title="🏆 Tabela da Fase de Grupos – PWC 25", color=discord.Color.gold())
     for pais, emoji, jogos, pontos, vi, di, saldo in tabela:
-        embed.add_field(name=f"{emoji} {pais}", value=f"Jogos: `{jogos}` | Pontos: `{pontos}` | ✅ VI: `{vi}` | ❌ DI: `{di}` | ⚖️ Saldo: `{saldo}`", inline=False)
-    await ctx.send(embed=embed)
+        embed.add_field(name=f"{emoji} {pais}", value=f"🎮 Jogos: `{jogos}` | ⭐ Pontos: `{pontos}` | ✅ VI: `{vi}` | ❌ DI: `{di}` | ⚖️ Saldo: `{saldo}`", inline=False)
 
+    await ctx.send(embed=embed)
 
 @bot.command()
 @commands.has_role(MOD_ROLE_ID)
@@ -210,8 +217,6 @@ async def jogosd(ctx, rodada: int):
         await db.commit()
 
     await ctx.send(f"❌ Rodada {rodada} resetada com sucesso!")
-
-
 
 DB = "divulgacao.db"
 STAFF_ROLE_ID = 1382505875549323349
