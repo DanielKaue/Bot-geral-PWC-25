@@ -36,6 +36,7 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 MOD_ROLE_ID = 1382505875549323349
+DB_PATH = "/mnt/data/pwc_tabela.db"  # caminho persistente no Railway
 
 PAISES = sorted([
     ("🇩🇪", "Alemanha"),
@@ -127,8 +128,7 @@ def get_emoji(pais_nome):
 @bot.command()
 async def tabela(ctx):
     """Exibe a tabela da fase de grupos"""
-    async with aiosqlite.connect("pwc_tabela.db") as db:
-        # Criação da tabela grupos_pwc com coluna emoji
+    async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS grupos_pwc (
                 pais TEXT PRIMARY KEY,
@@ -147,15 +147,13 @@ async def tabela(ctx):
         """)
         await db.commit()
 
-        # Insere países com emoji, se não existirem ainda
         for emoji, nome in PAISES:
-            cursor = await db.execute("SELECT pais FROM grupos_pwc WHERE pais = ?", (nome,))
-            exists = await cursor.fetchone()
-            if not exists:
+            cursor = await db.execute("SELECT 1 FROM grupos_pwc WHERE pais = ?", (nome,))
+            if not await cursor.fetchone():
                 await db.execute("INSERT INTO grupos_pwc (pais, emoji) VALUES (?, ?)", (nome, emoji))
         await db.commit()
 
-        cursor = await db.execute("SELECT * FROM grupos_pwc ORDER BY pais ASC")
+        cursor = await db.execute("SELECT pais, emoji, jogos, pontos, vi, di, saldo FROM grupos_pwc ORDER BY pais ASC")
         tabela = await cursor.fetchall()
 
     embed = discord.Embed(
@@ -164,8 +162,7 @@ async def tabela(ctx):
         color=discord.Color.gold()
     )
 
-    for time in tabela:
-        nome, emoji, jogos, pontos, vi, di, saldo = time
+    for nome, emoji, jogos, pontos, vi, di, saldo in tabela:
         linha = f"{emoji} **{nome}**\n📊 Jogos: `{jogos}` | Pontos: `{pontos}` | ✅ VI: `{vi}` | ❌ DI: `{di}` | ⚖️ Saldo: `{saldo}`\n"
         embed.add_field(name="\u200b", value=linha, inline=False)
 
@@ -190,7 +187,7 @@ async def jogos(ctx, rodada: int):
         await ctx.send(f"Rodada {rodada} inválida. Use um número entre 1 e 6.")
         return
 
-    async with aiosqlite.connect("pwc_tabela.db") as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS rodadas_lancadas (
                 rodada INTEGER PRIMARY KEY
@@ -199,8 +196,7 @@ async def jogos(ctx, rodada: int):
         await db.commit()
 
         cursor = await db.execute("SELECT rodada FROM rodadas_lancadas WHERE rodada = ?", (rodada,))
-        rodada_lancada = await cursor.fetchone()
-        if rodada_lancada:
+        if await cursor.fetchone():
             await ctx.send(f"Os resultados da rodada {rodada} já foram adicionados anteriormente.")
             return
 
@@ -229,10 +225,11 @@ async def jogos(ctx, rodada: int):
         )
 
         resultados = []
-
-        for i, (timeA, timeB) in enumerate(rodadas[rodada], 1):
+        i = 0
+        while i < len(rodadas[rodada]):
+            timeA, timeB = rodadas[rodada][i]
             await canal_temp.send(
-                f"**Jogo {i}**\n{get_emoji(timeA)} {timeA} x {get_emoji(timeB)} {timeB}\n"
+                f"**Jogo {i+1}**\n{get_emoji(timeA)} {timeA} x {get_emoji(timeB)} {timeB}\n"
                 f"Digite o placar (exemplo: 2x1):"
             )
 
@@ -246,20 +243,20 @@ async def jogos(ctx, rodada: int):
                 await canal_temp.delete()
                 return
 
-            if resposta.content.lower() == "cancelar":
+            content = resposta.content.lower()
+            if content == "cancelar":
                 await canal_temp.send("Comando cancelado pelo usuário.")
                 await canal_temp.delete()
                 return
 
-            if "x" not in resposta.content:
+            if "x" not in content:
                 await canal_temp.send("Formato inválido. Por favor envie no formato `XxY` (exemplo: 2x1). Tente novamente.")
-                # repete o jogo atual
-                continue
+                continue  # repete o jogo atual
 
-            partes = resposta.content.lower().split("x")
+            partes = content.split("x")
             if len(partes) != 2 or not partes[0].isdigit() or not partes[1].isdigit():
                 await canal_temp.send("Formato inválido. Use números inteiros, ex: 2x1. Tente novamente.")
-                continue
+                continue  # repete o jogo atual
 
             scoreA, scoreB = int(partes[0]), int(partes[1])
             resultados.append((timeA, timeB, scoreA, scoreB))
@@ -271,18 +268,32 @@ async def jogos(ctx, rodada: int):
             else:
                 await canal_temp.send(f"Resultado final: Empate entre {timeA} e {timeB} ({scoreA}x{scoreB}).")
 
+            i += 1  # só avança para o próximo jogo após entrada válida
+
         # Atualiza banco
-        async with aiosqlite.connect("pwc_tabela.db") as db:
+        async with aiosqlite.connect(DB_PATH) as db:
             for timeA, timeB, scoreA, scoreB in resultados:
                 for time in [timeA, timeB]:
                     await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais = ?", (time,))
 
                 if scoreA > scoreB:
-                    await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", ((scoreA - scoreB), timeA))
-                    await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", ((scoreA - scoreB), timeB))
+                    await db.execute(
+                        "UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?",
+                        (scoreA - scoreB, timeA)
+                    )
+                    await db.execute(
+                        "UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?",
+                        (scoreA - scoreB, timeB)
+                    )
                 elif scoreB > scoreA:
-                    await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", ((scoreB - scoreA), timeB))
-                    await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", ((scoreB - scoreA), timeA))
+                    await db.execute(
+                        "UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?",
+                        (scoreB - scoreA, timeB)
+                    )
+                    await db.execute(
+                        "UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?",
+                        (scoreB - scoreA, timeA)
+                    )
                 else:
                     await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1 WHERE pais = ?", (timeA,))
                     await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1 WHERE pais = ?", (timeB,))
