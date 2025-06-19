@@ -35,6 +35,263 @@ def keep_alive():
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+MOD_ROLE_ID = 1382505875549323349
+
+PAISES = sorted([
+    ("🇩🇪", "Alemanha"),
+    ("🇦🇷", "Argentina"),
+    ("🇦🇺", "Austrália"),
+    ("🇧🇷", "Brasil"),
+    ("🇭🇷", "Croácia"),
+    ("🇪🇸", "Espanha"),
+    ("🇺🇸", "Estados Unidos"),
+    ("🇫🇷", "França"),
+    ("🇳🇱", "Holanda"),
+    ("🏴", "Inglaterra"),
+    ("🇯🇵", "Japão"),
+    ("🇲🇦", "Marrocos"),
+    ("🇵🇱", "Polônia"),
+    ("🇵🇹", "Portugal"),
+    ("🇸🇳", "Senegal"),
+    ("🇺🇾", "Uruguai"),
+], key=lambda x: x[1])
+
+rodadas = {
+    1: [
+        ("França", "Austrália"),
+        ("Portugal", "Holanda"),
+        ("Espanha", "Estados Unidos"),
+        ("Brasil", "Croácia"),
+        ("Uruguai", "Senegal"),
+        ("Japão", "Inglaterra"),
+        ("Alemanha", "Polônia"),
+        ("Argentina", "Marrocos")
+    ],
+    2: [
+        ("Alemanha", "Austrália"),
+        ("Portugal", "Croácia"),
+        ("Polônia", "Senegal"),
+        ("Espanha", "Holanda"),
+        ("Japão", "Marrocos"),
+        ("Argentina", "França"),
+        ("Brasil", "Uruguai"),
+        ("Inglaterra", "Estados Unidos")
+    ],
+    3: [
+        ("França", "Senegal"),
+        ("Brasil", "Austrália"),
+        ("Argentina", "Estados Unidos"),
+        ("Espanha", "Inglaterra"),
+        ("Uruguai", "Marrocos"),
+        ("Japão", "Holanda"),
+        ("Portugal", "Polônia"),
+        ("Alemanha", "Croácia")
+    ],
+    4: [
+        ("Uruguai", "Estados Unidos"),
+        ("Polônia", "Marrocos"),
+        ("Japão", "Croácia"),
+        ("Portugal", "Senegal"),
+        ("França", "Inglaterra"),
+        ("Argentina", "Austrália"),
+        ("Brasil", "Alemanha")
+    ],
+    5: [
+        ("Marrocos", "Estados Unidos"),
+        ("Argentina", "Croácia"),
+        ("Japão", "Espanha"),
+        ("Uruguai", "Inglaterra"),
+        ("Brasil", "Polônia"),
+        ("Alemanha", "Senegal"),
+        ("Holanda", "Austrália"),
+        ("França", "Portugal")
+    ],
+    6: [
+        ("Inglaterra", "Croácia"),
+        ("Brasil", "Holanda"),
+        ("Alemanha", "Estados Unidos"),
+        ("França", "Polônia"),
+        ("Argentina", "Uruguai"),
+        ("Japão", "Austrália"),
+        ("Portugal", "Marrocos"),
+        ("Espanha", "Senegal")
+    ]
+}
+
+# Função para pegar emoji do país
+def get_emoji(pais_nome):
+    for emoji, nome in PAISES:
+        if nome == pais_nome:
+            return emoji
+    return ""
+
+@bot.command()
+async def tabela(ctx):
+    """Exibe a tabela da fase de grupos"""
+    async with aiosqlite.connect("pwc_tabela.db") as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS grupos_pwc (
+                pais TEXT PRIMARY KEY,
+                emoji TEXT,
+                jogos INTEGER,
+                pontos INTEGER,
+                vi INTEGER,
+                di INTEGER,
+                saldo INTEGER
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS rodadas_lancadas (
+                rodada INTEGER PRIMARY KEY
+            )
+        """)
+        await db.commit()
+
+        # Inicializa países se ainda não existem
+        for emoji, nome in PAISES:
+            cursor = await db.execute("SELECT pais FROM grupos_pwc WHERE pais = ?", (nome,))
+            exists = await cursor.fetchone()
+            if not exists:
+                await db.execute("INSERT INTO grupos_pwc VALUES (?, ?, 0, 0, 0, 0, 0)", (nome, emoji))
+        await db.commit()
+
+        cursor = await db.execute("SELECT * FROM grupos_pwc ORDER BY pais ASC")
+        tabela = await cursor.fetchall()
+
+    embed = discord.Embed(
+        title="🏆 Tabela da Fase de Grupos – PWC 25",
+        description="Aqui está a classificação atual dos países:",
+        color=discord.Color.gold()
+    )
+
+    for time in tabela:
+        nome, emoji, jogos, pontos, vi, di, saldo = time
+        linha = f"{emoji} **{nome}**\n📊 Jogos: `{jogos}` | Pontos: `{pontos}` | ✅ VI: `{vi}` | ❌ DI: `{di}` | ⚖️ Saldo: `{saldo}`\n"
+        embed.add_field(name="\u200b", value=linha, inline=False)
+
+    embed.add_field(
+        name="📅 Rodadas e Jogos",
+        value="[Clique aqui para ver os confrontos](https://seulink.com)",
+        inline=False
+    )
+    embed.set_footer(text="PWC 25 • Sistema de Pontos Corridos")
+    await ctx.send(embed=embed)
+
+@bot.command()
+@commands.has_role(MOD_ROLE_ID)
+async def tabela_add_resultados(ctx, rodada: int):
+    """Comando para adicionar resultados da rodada via canal temporário privado"""
+
+    if rodada not in rodadas:
+        await ctx.send(f"Rodada {rodada} inválida. Use um número entre 1 e 6.")
+        return
+
+    # Verifica se rodada já foi lançada
+    async with aiosqlite.connect("pwc_tabela.db") as db:
+        cursor = await db.execute("SELECT rodada FROM rodadas_lancadas WHERE rodada = ?", (rodada,))
+        rodada_lancada = await cursor.fetchone()
+        if rodada_lancada:
+            await ctx.send(f"Os resultados da rodada {rodada} já foram adicionados anteriormente.")
+            return
+
+    # Criar canal temporário
+    guild = ctx.guild
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+        guild.me: discord.PermissionOverwrite(read_messages=True)
+    }
+
+    canal_temp = await guild.create_text_channel(
+        name=f"resultados-pwc-{rodada}",
+        overwrites=overwrites,
+        reason=f"Canal temporário para adicionar resultados da rodada {rodada}"
+    )
+
+    try:
+        await canal_temp.send(f"Olá {ctx.author.mention}, vamos adicionar os resultados da **rodada {rodada}**.\n"
+                              f"Por favor, responda a cada mensagem com o placar no formato `XxY` (ex: 2x1)."
+                              f"Você pode enviar `cancelar` a qualquer momento para abortar.")
+
+        resultados = []
+
+        for i, (timeA, timeB) in enumerate(rodadas[rodada], 1):
+            msg = await canal_temp.send(f"**Jogo {i}**\n{get_emoji(timeA)} {timeA} x {get_emoji(timeB)} {timeB}\n"
+                                       f"Digite o placar (exemplo: 2x1):")
+
+            def check(m):
+                return m.channel == canal_temp and m.author == ctx.author
+
+            try:
+                resposta = await bot.wait_for('message', timeout=120.0, check=check)
+            except asyncio.TimeoutError:
+                await canal_temp.send("Tempo esgotado. Comando cancelado.")
+                await canal_temp.delete()
+                return
+
+            if resposta.content.lower() == "cancelar":
+                await canal_temp.send("Comando cancelado pelo usuário.")
+                await canal_temp.delete()
+                return
+
+            # Validar formato XxY
+            if "x" not in resposta.content:
+                await canal_temp.send("Formato inválido. Por favor envie no formato `XxY` (exemplo: 2x1). Tente novamente.")
+                # repetir o passo para este jogo
+                i -= 1
+                continue
+
+            partes = resposta.content.lower().split("x")
+            if len(partes) != 2 or not partes[0].isdigit() or not partes[1].isdigit():
+                await canal_temp.send("Formato inválido. Use números inteiros, ex: 2x1. Tente novamente.")
+                i -= 1
+                continue
+
+            scoreA, scoreB = int(partes[0]), int(partes[1])
+            resultados.append((timeA, timeB, scoreA, scoreB))
+
+            # Mensagem de confirmação
+            if scoreA > scoreB:
+                await canal_temp.send(f"Resultado final: {timeA} venceu {timeB} por {scoreA}x{scoreB}.")
+            elif scoreB > scoreA:
+                await canal_temp.send(f"Resultado final: {timeB} venceu {timeA} por {scoreB}x{scoreA}.")
+            else:
+                await canal_temp.send(f"Resultado final: Empate entre {timeA} e {timeB} ({scoreA}x{scoreB}).")
+
+        # Após coletar todos os resultados, atualiza banco
+        async with aiosqlite.connect("pwc_tabela.db") as db:
+            for timeA, timeB, scoreA, scoreB in resultados:
+                # Atualiza jogos +1
+                for time in [timeA, timeB]:
+                    await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais = ?", (time,))
+
+                # Atualiza pontos, VI, DI e saldo
+                if scoreA > scoreB:
+                    # TimeA venceu
+                    await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", ((scoreA - scoreB), timeA))
+                    await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", ((scoreA - scoreB), timeB))
+                elif scoreB > scoreA:
+                    # TimeB venceu
+                    await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", ((scoreB - scoreA), timeB))
+                    await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", ((scoreB - scoreA), timeA))
+                else:
+                    # Empate
+                    await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, saldo = saldo + 0 WHERE pais = ?", (timeA,))
+                    await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, saldo = saldo + 0 WHERE pais = ?", (timeB,))
+
+            # Marca rodada como lançada
+            await db.execute("INSERT INTO rodadas_lancadas (rodada) VALUES (?)", (rodada,))
+            await db.commit()
+
+        await canal_temp.send(f"✅ Resultados da rodada {rodada} adicionados com sucesso!")
+        await asyncio.sleep(5)
+        await canal_temp.delete()
+
+    except Exception as e:
+        await ctx.send(f"Ocorreu um erro: {e}")
+        if canal_temp:
+            await canal_temp.delete()
+
 DB = "divulgacao.db"
 STAFF_ROLE_ID = 1382505875549323349
 TICKET_CATEGORY_ID = 1382838633094053933  # Coloque o ID correto da categoria Tickets
@@ -535,70 +792,6 @@ async def criarserver(ctx):
 
     await ctx.send("✅ Estrutura criada com sucesso!")
 
-
-@bot.command()
-async def ajuda(ctx):
-    # IDs dos cargos
-    cargo_membro = 1382505877790470337
-    cargo_membro_geral = 1382505875549323346
-    cargo_mod1 = 1382505875549323349
-    cargo_mod2 = 1382838597790470337
-
-    roles_ids = [role.id for role in ctx.author.roles]
-
-    embed = discord.Embed(
-        title="📚 Comandos disponíveis",
-        color=discord.Color.green()
-    )
-
-    # Comandos gerais
-    comandos_gerais = (
-        "`!ajuda` - Mostra esta mensagem\n"
-        "`!ip` - Mostra o IP e porta do servidor\n"
-        "`!canais` - Lista os canais aprovados para divulgação\n"
-        "`!inscrever` - Envia seu canal para a staff aprovar\n"
-        "`!traduzir (de lingua) (para lingua)` - Traduz msg q vc estiver RESPONDENDO\n"
-    )
-
-    comandos_diversao = (
-        "`!ping` - Testa a latência do bot\n"
-        "`!userinfo @usuário` - Mostra informações do usuário\n"
-        "`!avatar @usuário` - Mostra o avatar do usuário\n"
-        "`!roll [lados]` - Rola um dado com N lados (padrão 6)\n"
-        "`!pix` - Pix para pagar a taxa de inscrição\n"
-        "`!serverinfo` - Mostra informações do servidor\n"
-    )
-
-    comandos_moderacao = (
-        "`!chat <n>` - Apaga mensagens do canal\n"
-        "`!criarserver` - Cria a estrutura do servidor\n"
-        "`!deletar` - Remove categorias, canais e cargos criados\n"
-        "`!lock` - Fecha o canal (sem permissão de envio)\n"
-        "`!unlock` - Reabre o canal\n"
-        "`!regrasdc` - Envia as regras do servidor\n"
-        "`!mods` - Lista os moderadores do servidor\n"
-        "`!inscrito` - Cria cargo de inscrito\n"
-        "`!shutdown` - Desliga o bot (somente dono)\n"
-    )
-
-    comandos_pixelmon = (
-        "`!fdg` - Mostra as 6 rodadas da fase de grupos\n"
-        "`!paises` - Envia o menu de seleção de países com autorole\n"
-    )
-
-    embed.add_field(name="Comandos Gerais", value=comandos_gerais, inline=False)
-    embed.add_field(name="Diversão", value=comandos_diversao, inline=False)
-
-    if cargo_mod1 in roles_ids or cargo_mod2 in roles_ids:
-        embed.add_field(name="Moderação", value=comandos_moderacao, inline=False)
-        embed.add_field(name="Pixelmon WC", value=comandos_pixelmon, inline=False)
-    elif cargo_membro_geral in roles_ids:
-        embed.add_field(name="Moderação", value=comandos_moderacao, inline=False)
-
-    await ctx.send(embed=embed)
-
-
-
 # Comando !ping
 @bot.command()
 async def ping(ctx):
@@ -1013,6 +1206,69 @@ async def traduzir(ctx, de: str = None, para: str = None):
     except Exception as e:
         await ctx.send("❌ Erro ao traduzir. Verifique os códigos de idioma (pt, en, es, etc).")
         print(f"Erro ao traduzir: {e}")
+
+@bot.command()
+async def ajuda(ctx):
+    """Comando ajuda atualizado com o novo comando tabela_add_resultados"""
+    # IDs dos cargos
+    cargo_membro = 1382505877790470337
+    cargo_membro_geral = 1382505875549323346
+    cargo_mod1 = 1382505875549323349
+    cargo_mod2 = 1382838597790470337
+
+    roles_ids = [role.id for role in ctx.author.roles]
+
+    embed = discord.Embed(
+        title="📚 Comandos disponíveis",
+        color=discord.Color.green()
+    )
+
+    comandos_gerais = (
+        "`!ajuda` - Mostra esta mensagem\n"
+        "`!ip` - Mostra o IP e porta do servidor\n"
+        "`!canais` - Lista os canais aprovados para divulgação\n"
+        "`!inscrever` - Envia seu canal para a staff aprovar\n"
+        "`!traduzir (de lingua) (para lingua)` - Traduz msg q vc estiver RESPONDENDO\n"
+    )
+
+    comandos_diversao = (
+        "`!ping` - Testa a latência do bot\n"
+        "`!userinfo @usuário` - Mostra informações do usuário\n"
+        "`!avatar @usuário` - Mostra o avatar do usuário\n"
+        "`!roll [lados]` - Rola um dado com N lados (padrão 6)\n"
+        "`!pix` - Pix para pagar a taxa de inscrição\n"
+        "`!serverinfo` - Mostra informações do servidor\n"
+    )
+
+    comandos_moderacao = (
+        "`!chat <n>` - Apaga mensagens do canal\n"
+        "`!criarserver` - Cria a estrutura do servidor\n"
+        "`!deletar` - Remove categorias, canais e cargos criados\n"
+        "`!lock` - Fecha o canal (sem permissão de envio)\n"
+        "`!unlock` - Reabre o canal\n"
+        "`!regrasdc` - Envia as regras do servidor\n"
+        "`!mods` - Lista os moderadores do servidor\n"
+        "`!inscrito` - Cria cargo de inscrito\n"
+        "`!shutdown` - Desliga o bot (somente dono)\n"
+    )
+
+    comandos_pixelmon = (
+        "`!fdg` - Mostra as 6 rodadas da fase de grupos\n"
+        "`!paises` - Envia o menu de seleção de países com autorole\n"
+        "`!tabela` - Exibe a tabela de classificação atual\n"
+        "`!tabela add resultados <rodada>` - Adiciona resultados da rodada (moderação)\n"
+    )
+
+    embed.add_field(name="Comandos Gerais", value=comandos_gerais, inline=False)
+    embed.add_field(name="Diversão", value=comandos_diversao, inline=False)
+
+    if cargo_mod1 in roles_ids or cargo_mod2 in roles_ids:
+        embed.add_field(name="Moderação", value=comandos_moderacao, inline=False)
+        embed.add_field(name="Pixelmon WC", value=comandos_pixelmon, inline=False)
+    elif cargo_membro_geral in roles_ids:
+        embed.add_field(name="Moderação", value=comandos_moderacao, inline=False)
+
+    await ctx.send(embed=embed)
 
 keep_alive()
 bot.run(os.getenv("TOKEN"))
