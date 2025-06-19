@@ -32,6 +32,9 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
+DB_PATH = "pwc_tabela.db"
+MOD_ROLE_ID = 138250587554932334
+
 PAISES = sorted([
     ("🇩🇪", "Alemanha"),
     ("🇦🇷", "Argentina"),
