@@ -36,7 +36,6 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 MOD_ROLE_ID = 1382505875549323349
-DB_PATH = "/mnt/data/pwc_tabela.db"  # caminho persistente no Railway
 
 PAISES = sorted([
     ("🇩🇪", "Alemanha"),
@@ -119,6 +118,13 @@ rodadas = {
     ]
 }
 
+DB_PATH = "/mnt/data/pwc_tabela.db"
+
+# Garante que a pasta exista
+os.makedirs("/mnt/data", exist_ok=True)
+
+bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
+
 def get_emoji(pais_nome):
     for emoji, nome in PAISES:
         if nome == pais_nome:
@@ -129,6 +135,7 @@ def get_emoji(pais_nome):
 async def tabela(ctx):
     """Exibe a tabela da fase de grupos"""
     async with aiosqlite.connect(DB_PATH) as db:
+        # Criar tabelas e inicializar países se necessário
         await db.execute("""
             CREATE TABLE IF NOT EXISTS grupos_pwc (
                 pais TEXT PRIMARY KEY,
@@ -316,7 +323,6 @@ async def jogos(ctx, rodada: int):
 async def jogos_error(ctx, error):
     if isinstance(error, commands.MissingRole):
         await ctx.send("Você não tem permissão para usar este comando.")
-
 
 DB = "divulgacao.db"
 STAFF_ROLE_ID = 1382505875549323349
