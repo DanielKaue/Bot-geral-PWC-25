@@ -190,6 +190,162 @@ async def jogos(ctx, rodada: int):
         await ctx.send("Rodada inválida. Use um número entre 1 e 6.")
         return
 
+MOD_ROLE_ID = 1382505875549323349
+
+PAISES = sorted([
+    ("🇩🇪", "Alemanha"),
+    ("🇦🇷", "Argentina"),
+    ("🇦🇺", "Austrália"),
+    ("🇧🇷", "Brasil"),
+    ("🇭🇷", "Croácia"),
+    ("🇪🇸", "Espanha"),
+    ("🇺🇸", "Estados Unidos"),
+    ("🇫🇷", "França"),
+    ("🇳🇱", "Holanda"),
+    ("🏴", "Inglaterra"),
+    ("🇯🇵", "Japão"),
+    ("🇲🇦", "Marrocos"),
+    ("🇵🇱", "Polônia"),
+    ("🇵🇹", "Portugal"),
+    ("🇸🇳", "Senegal"),
+    ("🇺🇾", "Uruguai"),
+], key=lambda x: x[1])
+
+rodadas = {
+    1: [
+        ("França", "Austrália"),
+        ("Portugal", "Holanda"),
+        ("Espanha", "Estados Unidos"),
+        ("Brasil", "Croácia"),
+        ("Uruguai", "Senegal"),
+        ("Japão", "Inglaterra"),
+        ("Alemanha", "Polônia"),
+        ("Argentina", "Marrocos")
+    ],
+    2: [
+        ("Alemanha", "Austrália"),
+        ("Portugal", "Croácia"),
+        ("Polônia", "Senegal"),
+        ("Espanha", "Holanda"),
+        ("Japão", "Marrocos"),
+        ("Argentina", "França"),
+        ("Brasil", "Uruguai"),
+        ("Inglaterra", "Estados Unidos")
+    ],
+    3: [
+        ("França", "Senegal"),
+        ("Brasil", "Austrália"),
+        ("Argentina", "Estados Unidos"),
+        ("Espanha", "Inglaterra"),
+        ("Uruguai", "Marrocos"),
+        ("Japão", "Holanda"),
+        ("Portugal", "Polônia"),
+        ("Alemanha", "Croácia")
+    ],
+    4: [
+        ("Uruguai", "Estados Unidos"),
+        ("Polônia", "Marrocos"),
+        ("Japão", "Croácia"),
+        ("Portugal", "Senegal"),
+        ("França", "Inglaterra"),
+        ("Argentina", "Austrália"),
+        ("Brasil", "Alemanha")
+    ],
+    5: [
+        ("Marrocos", "Estados Unidos"),
+        ("Argentina", "Croácia"),
+        ("Japão", "Espanha"),
+        ("Uruguai", "Inglaterra"),
+        ("Brasil", "Polônia"),
+        ("Alemanha", "Senegal"),
+        ("Holanda", "Austrália"),
+        ("França", "Portugal")
+    ],
+    6: [
+        ("Inglaterra", "Croácia"),
+        ("Brasil", "Holanda"),
+        ("Alemanha", "Estados Unidos"),
+        ("França", "Polônia"),
+        ("Argentina", "Uruguai"),
+        ("Japão", "Austrália"),
+        ("Portugal", "Marrocos"),
+        ("Espanha", "Senegal")
+    ]
+}
+
+DB_PATH = "/mnt/data/pwc_tabela.db"
+os.makedirs("/mnt/data", exist_ok=True)
+
+bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
+
+def get_emoji(pais_nome):
+    for emoji, nome in PAISES:
+        if nome == pais_nome:
+            return emoji
+    return ""
+
+async def inicializa_db():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS grupos_pwc (
+                pais TEXT PRIMARY KEY,
+                emoji TEXT,
+                jogos INTEGER DEFAULT 0,
+                pontos INTEGER DEFAULT 0,
+                vi INTEGER DEFAULT 0,
+                di INTEGER DEFAULT 0,
+                saldo INTEGER DEFAULT 0
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS rodadas_lancadas (
+                rodada INTEGER PRIMARY KEY
+            )
+        """)
+        await db.commit()
+        # Inicializa países, caso não existam
+        for emoji, nome in PAISES:
+            cursor = await db.execute("SELECT 1 FROM grupos_pwc WHERE pais = ?", (nome,))
+            if not await cursor.fetchone():
+                await db.execute("INSERT INTO grupos_pwc (pais, emoji) VALUES (?, ?)", (nome, emoji))
+        await db.commit()
+
+@bot.event
+async def on_ready():
+    print(f"Bot conectado como {bot.user}")
+    await inicializa_db()
+
+@bot.command()
+async def tabela(ctx):
+    """Mostra a tabela atualizada"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("SELECT pais, emoji, jogos, pontos, vi, di, saldo FROM grupos_pwc ORDER BY pontos DESC, saldo DESC, pais ASC")
+        tabela = await cursor.fetchall()
+
+    embed = discord.Embed(
+        title="🏆 Tabela da Fase de Grupos – PWC 25",
+        description="Aqui está a classificação atual dos países:",
+        color=discord.Color.gold()
+    )
+    for nome, emoji, jogos, pontos, vi, di, saldo in tabela:
+        linha = f"{emoji} **{nome}**\n📊 Jogos: `{jogos}` | Pontos: `{pontos}` | ✅ VI: `{vi}` | ❌ DI: `{di}` | ⚖️ Saldo: `{saldo}`"
+        embed.add_field(name="\u200b", value=linha, inline=False)
+
+    embed.set_footer(text="PWC 25 • Sistema de Pontos Corridos")
+    await ctx.send(embed=embed)
+
+@bot.command()
+@commands.has_role(MOD_ROLE_ID)
+async def jogos(ctx, rodada: int):
+    """Adiciona resultados da rodada, se ainda não adicionados"""
+    if ctx.guild is None:
+        await ctx.send("Este comando só pode ser usado em servidores.")
+        return
+    if rodada not in rodadas:
+        await ctx.send("Rodada inválida. Use um número entre 1 e 6.")
+        return
+
+
 DB = "divulgacao.db"
 STAFF_ROLE_ID = 1382505875549323349
 TICKET_CATEGORY_ID = 1382838633094053933  # Coloque o ID correto da categoria Tickets
