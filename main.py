@@ -220,18 +220,38 @@ async def jogosd(ctx, rodada: int):
 @bot.command()
 async def tabela(ctx):
     async with aiosqlite.connect(DB_PATH) as db:
+        # Cria a tabela caso não exista
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS grupos_pwc (
+                pais TEXT PRIMARY KEY,
+                emoji TEXT,
+                jogos INTEGER DEFAULT 0,
+                pontos INTEGER DEFAULT 0,
+                vi INTEGER DEFAULT 0,
+                di INTEGER DEFAULT 0,
+                saldo INTEGER DEFAULT 0
+            )
+        """)
+        await db.commit()
+
+        # Garante que os países estejam cadastrados
+        for emoji, nome in PAISES:
+            await db.execute("INSERT OR IGNORE INTO grupos_pwc (pais, emoji) VALUES (?, ?)", (nome, emoji))
+        await db.commit()
+
+        # Pega os dados ordenados
         cursor = await db.execute(
             "SELECT pais, emoji, jogos, pontos, vi, di, saldo FROM grupos_pwc ORDER BY pontos DESC, saldo DESC, pais ASC"
         )
         tabela = await cursor.fetchall()
 
     embed = discord.Embed(title="🏆 Tabela da Fase de Grupos – PWC 25", color=discord.Color.gold())
-    pos = 1
-    for pais, emoji, jogos, pontos, vi, di, saldo in tabela:
-        embed.add_field(name=f"{pos}º - {emoji} {pais}", 
-                        value=f"📊 Jogos: `{jogos}` | ⭐ Pontos: `{pontos}` | ✅ VI: `{vi}` | ❌ DI: `{di}` | ⚖️ Saldo: `{saldo}`", 
-                        inline=False)
-        pos += 1
+    for pos, (pais, emoji, jogos, pontos, vi, di, saldo) in enumerate(tabela, start=1):
+        embed.add_field(
+            name=f"{pos}º - {emoji} {pais}",
+            value=f"📊 Jogos: `{jogos}` | ⭐ Pontos: `{pontos}` | ✅ VI: `{vi}` | ❌ DI: `{di}` | ⚖️ Saldo: `{saldo}`",
+            inline=False
+        )
 
     await ctx.send(embed=embed)
 
