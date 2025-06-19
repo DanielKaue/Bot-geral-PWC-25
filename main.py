@@ -180,7 +180,11 @@ async def tabela(ctx):
 @bot.command()
 @commands.has_role(MOD_ROLE_ID)
 async def jogos_add_resultados(ctx, rodada: int):
-    """Comando para adicionar resultados da rodada via canal temporário privado"""
+    print(f"[DEBUG] Comando jogos_add_resultados chamado por {ctx.author} para rodada {rodada}")
+
+    if ctx.guild is None:
+        await ctx.send("Este comando só pode ser usado em servidores.")
+        return
 
     if rodada not in rodadas:
         await ctx.send(f"Rodada {rodada} inválida. Use um número entre 1 e 6.")
@@ -188,13 +192,19 @@ async def jogos_add_resultados(ctx, rodada: int):
 
     # Verifica se rodada já foi lançada
     async with aiosqlite.connect("pwc_tabela.db") as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS rodadas_lancadas (
+                rodada INTEGER PRIMARY KEY
+            )
+        """)
+        await db.commit()
+
         cursor = await db.execute("SELECT rodada FROM rodadas_lancadas WHERE rodada = ?", (rodada,))
         rodada_lancada = await cursor.fetchone()
         if rodada_lancada:
             await ctx.send(f"Os resultados da rodada {rodada} já foram adicionados anteriormente.")
             return
 
-    # Criar canal temporário
     guild = ctx.guild
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
@@ -202,22 +212,30 @@ async def jogos_add_resultados(ctx, rodada: int):
         guild.me: discord.PermissionOverwrite(read_messages=True)
     }
 
-    canal_temp = await guild.create_text_channel(
-        name=f"resultados-pwc-{rodada}",
-        overwrites=overwrites,
-        reason=f"Canal temporário para adicionar resultados da rodada {rodada}"
-    )
+    try:
+        canal_temp = await guild.create_text_channel(
+            name=f"resultados-pwc-{rodada}",
+            overwrites=overwrites,
+            reason=f"Canal temporário para adicionar resultados da rodada {rodada}"
+        )
+    except Exception as e:
+        await ctx.send(f"Não consegui criar o canal temporário: {e}")
+        return
 
     try:
-        await canal_temp.send(f"Olá {ctx.author.mention}, vamos adicionar os resultados da **rodada {rodada}**.\n"
-                              f"Por favor, responda a cada mensagem com o placar no formato `XxY` (ex: 2x1)."
-                              f"Você pode enviar `cancelar` a qualquer momento para abortar.")
+        await canal_temp.send(
+            f"Olá {ctx.author.mention}, vamos adicionar os resultados da **rodada {rodada}**.\n"
+            f"Por favor, responda a cada mensagem com o placar no formato `XxY` (ex: 2x1).\n"
+            f"Você pode enviar `cancelar` a qualquer momento para abortar."
+        )
 
         resultados = []
 
         for i, (timeA, timeB) in enumerate(rodadas[rodada], 1):
-            msg = await canal_temp.send(f"**Jogo {i}**\n{get_emoji(timeA)} {timeA} x {get_emoji(timeB)} {timeB}\n"
-                                       f"Digite o placar (exemplo: 2x1):")
+            msg = await canal_temp.send(
+                f"**Jogo {i}**\n{get_emoji(timeA)} {timeA} x {get_emoji(timeB)} {timeB}\n"
+                f"Digite o placar (exemplo: 2x1):"
+            )
 
             def check(m):
                 return m.channel == canal_temp and m.author == ctx.author
@@ -234,10 +252,9 @@ async def jogos_add_resultados(ctx, rodada: int):
                 await canal_temp.delete()
                 return
 
-            # Validar formato XxY
             if "x" not in resposta.content:
                 await canal_temp.send("Formato inválido. Por favor envie no formato `XxY` (exemplo: 2x1). Tente novamente.")
-                # repetir o passo para este jogo
+                # volta uma iteração
                 i -= 1
                 continue
 
@@ -250,7 +267,6 @@ async def jogos_add_resultados(ctx, rodada: int):
             scoreA, scoreB = int(partes[0]), int(partes[1])
             resultados.append((timeA, timeB, scoreA, scoreB))
 
-            # Mensagem de confirmação
             if scoreA > scoreB:
                 await canal_temp.send(f"Resultado final: {timeA} venceu {timeB} por {scoreA}x{scoreB}.")
             elif scoreB > scoreA:
@@ -258,28 +274,21 @@ async def jogos_add_resultados(ctx, rodada: int):
             else:
                 await canal_temp.send(f"Resultado final: Empate entre {timeA} e {timeB} ({scoreA}x{scoreB}).")
 
-        # Após coletar todos os resultados, atualiza banco
         async with aiosqlite.connect("pwc_tabela.db") as db:
             for timeA, timeB, scoreA, scoreB in resultados:
-                # Atualiza jogos +1
                 for time in [timeA, timeB]:
                     await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais = ?", (time,))
 
-                # Atualiza pontos, VI, DI e saldo
                 if scoreA > scoreB:
-                    # TimeA venceu
                     await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", ((scoreA - scoreB), timeA))
                     await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", ((scoreA - scoreB), timeB))
                 elif scoreB > scoreA:
-                    # TimeB venceu
                     await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", ((scoreB - scoreA), timeB))
                     await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", ((scoreB - scoreA), timeA))
                 else:
-                    # Empate
-                    await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, saldo = saldo + 0 WHERE pais = ?", (timeA,))
-                    await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, saldo = saldo + 0 WHERE pais = ?", (timeB,))
+                    await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1 WHERE pais = ?", (timeA,))
+                    await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1 WHERE pais = ?", (timeB,))
 
-            # Marca rodada como lançada
             await db.execute("INSERT INTO rodadas_lancadas (rodada) VALUES (?)", (rodada,))
             await db.commit()
 
@@ -288,9 +297,18 @@ async def jogos_add_resultados(ctx, rodada: int):
         await canal_temp.delete()
 
     except Exception as e:
-        await ctx.send(f"Ocorreu um erro: {e}")
-        if canal_temp:
+        await ctx.send(f"Ocorreu um erro inesperado: {e}")
+        try:
             await canal_temp.delete()
+        except:
+            pass
+
+# Tratamento para erro de falta de cargo:
+@jogos_add_resultados.error
+async def jogos_add_resultados_error(ctx, error):
+    if isinstance(error, commands.MissingRole):
+        await ctx.send("Você não tem permissão para usar este comando.")
+
 
 DB = "divulgacao.db"
 STAFF_ROLE_ID = 1382505875549323349
