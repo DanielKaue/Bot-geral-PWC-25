@@ -179,7 +179,7 @@ async def tabela(ctx):
 
 @bot.command()
 @commands.has_role(MOD_ROLE_ID)
-async def tabela_add_resultados(ctx, rodada: int):
+async def jogos_add_resultados(ctx, rodada: int):
     """Comando para adicionar resultados da rodada via canal temporário privado"""
 
     if rodada not in rodadas:
@@ -1256,7 +1256,7 @@ async def ajuda(ctx):
         "`!fdg` - Mostra as 6 rodadas da fase de grupos\n"
         "`!paises` - Envia o menu de seleção de países com autorole\n"
         "`!tabela` - Exibe a tabela de classificação atual\n"
-        "`!tabela add resultados <rodada>` - Adiciona resultados da rodada (moderação)\n"
+        "`!jogos add resultados <rodada>` - Adiciona resultados da rodada (moderação)\n"
     )
 
     embed.add_field(name="Comandos Gerais", value=comandos_gerais, inline=False)
