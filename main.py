@@ -32,15 +32,20 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-DB_PATH = "pwc_tabela.db"
-MOD_ROLE_ID = 138250587554932334
+intents = discord.Intents.all()
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-PAISES = [
+DB_PATH = "pwc_tabela.db"
+MOD_ROLE_ID = 138250587554932334  # ID do cargo moderador
+
+PAISES = sorted([
     ("🇩🇪", "Alemanha"), ("🇦🇷", "Argentina"), ("🇦🇺", "Austrália"), ("🇧🇷", "Brasil"),
     ("🇭🇷", "Croácia"), ("🇪🇸", "Espanha"), ("🇺🇸", "EUA"), ("🇫🇷", "França"),
     ("🇳🇱", "Holanda"), ("🏴", "Inglaterra"), ("🇯🇵", "Japão"), ("🇲🇦", "Marrocos"),
     ("🇵🇱", "Polônia"), ("🇵🇹", "Portugal"), ("🇸🇳", "Senegal"), ("🇺🇾", "Uruguai")
-]
+], key=lambda x: x[1])
 
 RODADAS = {
     1: [("França", "Austrália"), ("Portugal", "Holanda"), ("Espanha", "EUA"), ("Brasil", "Croácia"),
@@ -62,12 +67,6 @@ def get_emoji(pais_nome):
         if nome == pais_nome:
             return emoji
     return ""
-
-
-intents = discord.Intents.all()
-intents = discord.Intents.default()
-intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
@@ -100,7 +99,7 @@ async def on_ready():
         for _, pais in PAISES:
             await db.execute("INSERT OR IGNORE INTO grupos_pwc (pais, emoji) VALUES (?, ?)", (pais, get_emoji(pais)))
         await db.commit()
-    print(f"Bot online como {bot.user}")
+    print(f"✅ Bot online como {bot.user}")
 
 @bot.command()
 @commands.has_role(MOD_ROLE_ID)
@@ -116,17 +115,16 @@ async def jogos(ctx, rodada: int):
             return
 
     canal = await ctx.guild.create_text_channel(f"resultados-rodada-{rodada}")
-    await canal.send(f"Rodada {rodada}. Envie os placares no formato `XxY`. Escreva 'cancelar' para sair.")
+    await canal.send(f"📥 Resultados da rodada {rodada}. Envie os placares no formato `XxY` (ex: `2x1`). Digite `cancelar` para parar.")
 
     resultados = []
 
-    for i, (a, b) in enumerate(RODADAS[rodada], start=1):
-        await canal.send(f"Jogo {i}: {get_emoji(a)} {a} x {get_emoji(b)} {b}")
+    for i, (timeA, timeB) in enumerate(RODADAS[rodada], start=1):
+        await canal.send(f"Jogo {i}: {get_emoji(timeA)} {timeA} x {get_emoji(timeB)} {timeB}")
 
         def check(m): return m.channel == canal and m.author == ctx.author
-
         try:
-            msg = await bot.wait_for("message", check=check, timeout=120)
+            msg = await bot.wait_for("message", check=check, timeout=180)
         except asyncio.TimeoutError:
             await canal.send("⏰ Tempo esgotado.")
             return
@@ -135,39 +133,38 @@ async def jogos(ctx, rodada: int):
             await canal.send("❌ Cancelado.")
             return
 
-        if "x" not in msg.content.lower():
-            await canal.send("Formato inválido.")
+        if "x" not in msg.content:
+            await canal.send("❌ Formato inválido. Pulei este jogo.")
             continue
 
         x, y = msg.content.lower().split("x")
         if not x.strip().isdigit() or not y.strip().isdigit():
-            await canal.send("Números inválidos.")
+            await canal.send("❌ Números inválidos. Pulei este jogo.")
             continue
 
         scoreA, scoreB = int(x), int(y)
-        resultados.append((a, b, scoreA, scoreB))
+        resultados.append((timeA, timeB, scoreA, scoreB))
 
     async with aiosqlite.connect(DB_PATH) as db:
-        for a, b, sa, sb in resultados:
-            await db.execute("INSERT INTO resultados VALUES (?, ?, ?, ?, ?)", (rodada, a, b, sa, sb))
+        for timeA, timeB, scoreA, scoreB in resultados:
+            await db.execute("INSERT INTO resultados (rodada, timeA, timeB, scoreA, scoreB) VALUES (?, ?, ?, ?, ?)", (rodada, timeA, timeB, scoreA, scoreB))
 
-            await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais = ?", (a,))
-            await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais = ?", (b,))
+            await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais IN (?, ?)", (timeA, timeB))
 
-            if sa > sb:
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (sa - sb, a))
-                await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (sa - sb, b))
-            elif sb > sa:
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (sb - sa, b))
-                await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (sb - sa, a))
+            if scoreA > scoreB:
+                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (scoreA - scoreB, timeA))
+                await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (scoreA - scoreB, timeB))
+            elif scoreB > scoreA:
+                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (scoreB - scoreA, timeB))
+                await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (scoreB - scoreA, timeA))
             else:
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, vi = vi + 1 WHERE pais = ?", (a,))
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, di = di + 1 WHERE pais = ?", (b,))
+                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, vi = vi + 1 WHERE pais = ?", (timeA,))
+                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, di = di + 1 WHERE pais = ?", (timeB,))
 
-        await db.execute("INSERT INTO rodadas_lancadas VALUES (?)", (rodada,))
+        await db.execute("INSERT INTO rodadas_lancadas (rodada) VALUES (?)", (rodada,))
         await db.commit()
 
-    await canal.send("✅ Resultados adicionados com sucesso.")
+    await canal.send("✅ Resultados registrados com sucesso!")
 
 @bot.command()
 async def tabela(ctx):
@@ -175,15 +172,15 @@ async def tabela(ctx):
         cursor = await db.execute("""
             SELECT pais, emoji, jogos, pontos, vi, di, saldo
             FROM grupos_pwc
-            ORDER BY pontos DESC, saldo DESC, vi DESC, pais ASC
+            ORDER BY pontos DESC, saldo DESC, vi DESC
         """)
-        linhas = await cursor.fetchall()
+        dados = await cursor.fetchall()
 
     embed = discord.Embed(title="🏆 Tabela da Fase de Grupos – PWC 25", color=discord.Color.gold())
-    for pais, emoji, jogos, pontos, vi, di, saldo in linhas:
+    for pais, emoji, jogos, pontos, vi, di, saldo in dados:
         embed.add_field(
             name=f"{emoji} {pais}",
-            value=f"📊 Jogos: `{jogos}` | ⭐ Pontos: `{pontos}` | ✅ VI: `{vi}` | ❌ DI: `{di}` | ⚖️ Saldo: `{saldo}`",
+            value=f"📊 Jogos: `{jogos}` | Pontos: `{pontos}` | ✅ VI: `{vi}` | ❌ DI: `{di}` | ⚖️ Saldo: `{saldo}`",
             inline=False
         )
     await ctx.send(embed=embed)
@@ -196,31 +193,34 @@ async def jogosd(ctx, rodada: int):
         return
 
     async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("SELECT * FROM resultados WHERE rodada = ?", (rodada,))
+        resultados = await cursor.fetchall()
+
+        if not resultados:
+            await ctx.send("❌ Nenhum resultado encontrado para esta rodada.")
+            return
+
         await db.execute("DELETE FROM resultados WHERE rodada = ?", (rodada,))
         await db.execute("DELETE FROM rodadas_lancadas WHERE rodada = ?", (rodada,))
         await db.execute("UPDATE grupos_pwc SET jogos = 0, pontos = 0, vi = 0, di = 0, saldo = 0")
 
+        # Recalcula tudo
         cursor = await db.execute("SELECT rodada, timeA, timeB, scoreA, scoreB FROM resultados")
-        todos = await cursor.fetchall()
-
-        for r, a, b, sa, sb in todos:
-            await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais = ?", (a,))
-            await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais = ?", (b,))
-
-            if sa > sb:
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (sa - sb, a))
-                await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (sa - sb, b))
-            elif sb > sa:
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (sb - sa, b))
-                await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (sb - sa, a))
+        todos_resultados = await cursor.fetchall()
+        for r, timeA, timeB, scoreA, scoreB in todos_resultados:
+            await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais IN (?, ?)", (timeA, timeB))
+            if scoreA > scoreB:
+                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (scoreA - scoreB, timeA))
+                await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (scoreA - scoreB, timeB))
+            elif scoreB > scoreA:
+                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (scoreB - scoreA, timeB))
+                await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (scoreB - scoreA, timeA))
             else:
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, vi = vi + 1 WHERE pais = ?", (a,))
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, di = di + 1 WHERE pais = ?", (b,))
+                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, vi = vi + 1 WHERE pais = ?", (timeA,))
+                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, di = di + 1 WHERE pais = ?", (timeB,))
 
         await db.commit()
-
     await ctx.send(f"❌ Rodada {rodada} removida e tabela recalculada.")
-
 
 DB = "divulgacao.db"
 STAFF_ROLE_ID = 1382505875549323349
