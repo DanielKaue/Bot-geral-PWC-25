@@ -12,10 +12,9 @@ import feedparser
 from discord.ext import commands, tasks
 from discord.ui import View, Button
 from discord import Interaction
-from googletrans import Translator
+import json
 
 warns = {}
-translator = Translator()
 app = Flask('')
 
 
@@ -32,453 +31,220 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
+DATA_FILE = "data.json"
+ROLE_ID = 1382505875549323349
+
 intents = discord.Intents.all()
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-DB_PATH = "pwc_tabela.db"
-MOD_ROLE_ID = 138250587554932334  
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        initial_data = {
+            "selecoes": [
+                "Brasil", "França", "Portugal", "Holanda", "Espanha",
+                "EUA", "Alemanha", "Polônia", "Argentina", "Marrocos",
+                "Japão", "Inglaterra", "Austrália", "Croácia", "Uruguai", "Senegal"
+            ],
+            "rodadas": {
+                "1": [
+                    {"time1": "França", "time2": "Austrália"},
+                    {"time1": "Portugal", "time2": "Holanda"},
+                    {"time1": "Espanha", "time2": "EUA"},
+                    {"time1": "Brasil", "time2": "Croácia"},
+                    {"time1": "Uruguai", "time2": "Senegal"},
+                    {"time1": "Japão", "time2": "Inglaterra"},
+                    {"time1": "Alemanha", "time2": "Polônia"},
+                    {"time1": "Argentina", "time2": "Marrocos"}
+                ]
+            },
+            "resultados": {},
+            "tabela": {}
+        }
+        with open(DATA_FILE, "w") as f:
+            json.dump(initial_data, f, indent=4)
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
 
-DB_PATH = "pwc.db"
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
 
-RODADAS = {
-    1: [
-        ("França", "Austrália"),
-        ("Portugal", "Holanda"),
-        ("Espanha", "EUA"),
-        ("Brasil", "Croácia"),
-        ("Uruguai", "Senegal"),
-        ("Japão", "Inglaterra"),
-        ("Alemanha", "Polônia"),
-        ("Argentina", "Marrocos")
-    ],
-    2: [
-        ("Alemanha", "Austrália"),
-        ("Portugal", "Croácia"),
-        ("Polônia", "Senegal"),
-        ("Espanha", "Holanda"),
-        ("Japão", "Marrocos"),
-        ("Argentina", "França"),
-        ("Brasil", "Uruguai"),
-        ("Inglaterra", "EUA")
-    ],
-    3: [
-        ("França", "Senegal"),
-        ("Brasil", "Austrália"),
-        ("Argentina", "EUA"),
-        ("Espanha", "Inglaterra"),
-        ("Uruguai", "Marrocos"),
-        ("Japão", "Holanda"),
-        ("Portugal", "Polônia"),
-        ("Alemanha", "Croácia")
-    ],
-    4: [
-        ("Uruguai", "EUA"),
-        ("Polônia", "Marrocos"),
-        ("Japão", "Croácia"),
-        ("Portugal", "Senegal"),
-        ("França", "Inglaterra"),
-        ("Argentina", "Austrália"),
-        ("Brasil", "Alemanha")
-    ],
-    5: [
-        ("Marrocos", "EUA"),
-        ("Argentina", "Croácia"),
-        ("Japão", "Espanha"),
-        ("Uruguai", "Inglaterra"),
-        ("Brasil", "Polônia"),
-        ("Alemanha", "Senegal"),
-        ("Holanda", "Austrália"),
-        ("França", "Portugal")
-    ],
-    6: [
-        ("Inglaterra", "Croácia"),
-        ("Brasil", "Holanda"),
-        ("Alemanha", "EUA"),
-        ("França", "Polônia"),
-        ("Argentina", "Uruguai"),
-        ("Japão", "Austrália"),
-        ("Portugal", "Marrocos"),
-        ("Espanha", "Senegal")
-    ]
-}
+def reset_tabela(selecoes):
+    tabela = {}
+    for s in selecoes:
+        tabela[s] = {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        }
+    return tabela
 
-PAISES = {
-    "Argentina": "🇦🇷", "Austrália": "🇦🇺", "Brasil": "🇧🇷", "Alemanha": "🇩🇪",
-    "Espanha": "🇪🇸", "França": "🇫🇷", "Croácia": "🇭🇷", "Japão": "🇯🇵",
-    "Marrocos": "🇲🇦", "Holanda": "🇳🇱", "Polônia": "🇵🇱", "Portugal": "🇵🇹",
-    "Senegal": "🇸🇳", "EUA": "🇺🇸", "Uruguai": "🇺🇾", "Inglaterra": "🏴"
-}
+def atualiza_tabela(data):
+    selecoes = data.get("selecoes", [])
+    tabela = reset_tabela(selecoes)
+    resultados = data.get("resultados", {})
 
-def get_emoji(pais):
-    emojis = {
-        "Argentina": "🇦🇷",
-        "Austrália": "🇦🇺",
-        "Brasil": "🇧🇷",
-        "Alemanha": "🇩🇪",
-        "Espanha": "🇪🇸",
-        "França": "🇫🇷",
-        "Croácia": "🇭🇷",
-        "Japão": "🇯🇵",
-        "Marrocos": "🇲🇦",
-        "Holanda": "🇳🇱",
-        "Polônia": "🇵🇱",
-        "Portugal": "🇵🇹",
-        "Senegal": "🇸🇳",
-        "EUA": "🇺🇸",
-        "Uruguai": "🇺🇾",
-        "Inglaterra": "🏴"
-    }
-    return emojis.get(pais, "🏳️") 
+    for rodada, jogos in resultados.items():
+        for jogo in jogos:
+            time1 = jogo.get("time1")
+            time2 = jogo.get("time2")
+            placar1 = jogo.get("placar1", 0)
+            placar2 = jogo.get("placar2", 0)
 
+            if time1 not in tabela or time2 not in tabela:
+                continue
 
-async def init_db():
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS grupos_pwc (
-                pais TEXT PRIMARY KEY,
-                jogos INTEGER DEFAULT 0,
-                pontos INTEGER DEFAULT 0,
-                vi INTEGER DEFAULT 0,
-                di INTEGER DEFAULT 0,
-                saldo INTEGER DEFAULT 0
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS rodadas_lancadas (
-                rodada INTEGER PRIMARY KEY
-            )
-        """)
-        # Verifica se os países já estão inseridos
-        for pais in PAISES:
-            cursor = await db.execute("SELECT 1 FROM grupos_pwc WHERE pais = ?", (pais,))
-            if not await cursor.fetchone():
-                await db.execute("INSERT INTO grupos_pwc (pais) VALUES (?)", (pais,))
-        await db.commit()
+            tabela[time1]["vitorias"] += placar1
+            tabela[time1]["derrotas"] += placar2
+            tabela[time1]["saldo"] += placar1 - placar2
 
-@bot.event
-async def on_ready():
-    await init_db()
-    print(f"🤖 Bot online como {bot.user}")
+            tabela[time2]["vitorias"] += placar2
+            tabela[time2]["derrotas"] += placar1
+            tabela[time2]["saldo"] += placar2 - placar1
+
+            if placar1 > placar2:
+                tabela[time1]["pontos"] += 3
+            elif placar2 > placar1:
+                tabela[time2]["pontos"] += 3
+            else:
+                tabela[time1]["pontos"] += 1
+                tabela[time2]["pontos"] += 1
+                tabela[time1]["empates"] += 1
+                tabela[time2]["empates"] += 1
+
+    data["tabela"] = tabela
+    save_data(data)
+
+def numero_ordinal(n):
+    if 10 <= n % 100 <= 20:
+        sufixo = "º"
+    else:
+        sufixo = {1: "º", 2: "º", 3: "º"}.get(n % 10, "º")
+    return f"{n}{sufixo}"
+
+def has_role_id(role_id):
+    def predicate(ctx):
+        role = discord.utils.get(ctx.author.roles, id=role_id)
+        return role is not None
+    return commands.check(predicate)
 
 @bot.command()
-async def tabela(ctx):
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute("""
-            SELECT pais, jogos, pontos, vi, di, saldo
-            FROM grupos_pwc
-            ORDER BY pontos DESC, saldo DESC, vi DESC
-        """)
-        dados = await cursor.fetchall()
-
-    if not dados:
-        await ctx.send("❌ A tabela ainda está vazia.")
-        return
-
-    linhas = []
-    for pais, jogos, pontos, vi, di, saldo in dados:
-        emoji = PAISES.get(pais, "")
-        linhas.append(f"**{emoji} {pais}**\n📊 Jogos: {jogos} | Pontos: {pontos} | ✅ VI: {vi} | ❌ DI: {di} | ⚖️ Saldo: {saldo}")
-
-    embed = discord.Embed(
-        title="🏆 Tabela da Fase de Grupos – PWC 25",
-        description="\n\n".join(linhas),
-        color=discord.Color.blue()
-    )
-    await ctx.send(embed=embed)
-
-
-@bot.command()
-@commands.has_role(MOD_ROLE_ID)
+@has_role_id(ROLE_ID)
 async def jogos(ctx, rodada: int):
-    if rodada not in RODADAS:
-        await ctx.send("Rodada inválida. Use um número entre 1 e 6.")
+    data = load_data()
+    rodadas = data.get("rodadas", {})
+    if str(rodada) not in rodadas:
+        await ctx.send(f"Rodada {rodada} não encontrada.")
         return
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute("SELECT 1 FROM rodadas_lancadas WHERE rodada = ?", (rodada,))
-        if await cursor.fetchone():
-            await ctx.send(f"⚠️ Rodada {rodada} já registrada.")
-            return
+    jogos_da_rodada = rodadas[str(rodada)]
+    await ctx.send(f"Adicione os resultados da rodada {rodada} no formato `YxY` para cada jogo, na ordem:")
 
-    canal = await ctx.guild.create_text_channel(f"resultados-rodada-{rodada}")
-    await canal.send(f"📥 Resultados da rodada {rodada}. Envie os placares no formato `XxY` (ex: `2x1`). Digite `cancelar` para parar.")
+    jogos_texto = ""
+    for i, jogo in enumerate(jogos_da_rodada, start=1):
+        jogos_texto += f"{i}. {jogo['time1']} x {jogo['time2']}\n"
+    await ctx.send(jogos_texto)
+
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel
 
     resultados = []
-
-    for i, (timeA, timeB) in enumerate(RODADAS[rodada], start=1):
-        await canal.send(f"Jogo {i}: {get_emoji(timeA)} {timeA} x {get_emoji(timeB)} {timeB}")
-
-        def check(m): return m.channel == canal and m.author == ctx.author
+    for i, jogo in enumerate(jogos_da_rodada, start=1):
+        await ctx.send(f"Resultado para {jogo['time1']} x {jogo['time2']}:")
         try:
-            msg = await bot.wait_for("message", check=check, timeout=180)
-        except asyncio.TimeoutError:
-            await canal.send("⏰ Tempo esgotado.")
+            msg = await bot.wait_for('message', check=check, timeout=120.0)
+            if 'x' not in msg.content:
+                await ctx.send("Formato inválido, use `YxY`.")
+                return
+            placar1_str, placar2_str = msg.content.lower().split('x')
+            placar1 = int(placar1_str.strip())
+            placar2 = int(placar2_str.strip())
+            if placar1 < 0 or placar2 < 0:
+                await ctx.send("Os valores devem ser números inteiros positivos.")
+                return
+            resultados.append({
+                "time1": jogo["time1"],
+                "time2": jogo["time2"],
+                "placar1": placar1,
+                "placar2": placar2
+            })
+        except Exception:
+            await ctx.send("Tempo esgotado ou erro. Comando cancelado.")
             return
 
-        if msg.content.lower() == "cancelar":
-            await canal.send("❌ Cancelado.")
-            return
+    data.setdefault("resultados", {})
+    data["resultados"][str(rodada)] = resultados
+    atualiza_tabela(data)
 
-        if "x" not in msg.content:
-            await canal.send("❌ Formato inválido. Pulei este jogo.")
-            continue
-
-        x, y = msg.content.lower().split("x")
-        if not x.strip().isdigit() or not y.strip().isdigit():
-            await canal.send("❌ Números inválidos. Pulei este jogo.")
-            continue
-
-        scoreA, scoreB = int(x), int(y)
-        resultados.append((timeA, timeB, scoreA, scoreB))
-
-    async with aiosqlite.connect(DB_PATH) as db:
-        for timeA, timeB, scoreA, scoreB in resultados:
-            await db.execute("INSERT INTO resultados (rodada, timeA, timeB, scoreA, scoreB) VALUES (?, ?, ?, ?, ?)", (rodada, timeA, timeB, scoreA, scoreB))
-
-            await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais IN (?, ?)", (timeA, timeB))
-
-            if scoreA > scoreB:
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (scoreA - scoreB, timeA))
-                await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (scoreA - scoreB, timeB))
-            elif scoreB > scoreA:
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (scoreB - scoreA, timeB))
-                await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (scoreB - scoreA, timeA))
-            else:
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, vi = vi + 1 WHERE pais = ?", (timeA,))
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, di = di + 1 WHERE pais = ?", (timeB,))
-
-        await db.execute("INSERT INTO rodadas_lancadas (rodada) VALUES (?)", (rodada,))
-        await db.commit()
-
-    await canal.send("✅ Resultados registrados com sucesso!")
+    await ctx.send(f"Resultados da rodada {rodada} atualizados e tabela recalculada.")
 
 @bot.command()
-@commands.has_role(MOD_ROLE_ID)
+@has_role_id(ROLE_ID)
 async def jogosd(ctx, rodada: int):
-    if rodada not in RODADAS:
-        await ctx.send("Rodada inválida.")
+    data = load_data()
+    if str(rodada) not in data.get("resultados", {}):
+        await ctx.send(f"Não há resultados para a rodada {rodada}.")
         return
-
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute("SELECT * FROM resultados WHERE rodada = ?", (rodada,))
-        resultados = await cursor.fetchall()
-
-        if not resultados:
-            await ctx.send("❌ Nenhum resultado encontrado para esta rodada.")
-            return
-
-        await db.execute("DELETE FROM resultados WHERE rodada = ?", (rodada,))
-        await db.execute("DELETE FROM rodadas_lancadas WHERE rodada = ?", (rodada,))
-        await db.execute("UPDATE grupos_pwc SET jogos = 0, pontos = 0, vi = 0, di = 0, saldo = 0")
-
-        # Recalcula tudo
-        cursor = await db.execute("SELECT rodada, timeA, timeB, scoreA, scoreB FROM resultados")
-        todos_resultados = await cursor.fetchall()
-        for r, timeA, timeB, scoreA, scoreB in todos_resultados:
-            await db.execute("UPDATE grupos_pwc SET jogos = jogos + 1 WHERE pais IN (?, ?)", (timeA, timeB))
-            if scoreA > scoreB:
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (scoreA - scoreB, timeA))
-                await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (scoreA - scoreB, timeB))
-            elif scoreB > scoreA:
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 3, vi = vi + 1, saldo = saldo + ? WHERE pais = ?", (scoreB - scoreA, timeB))
-                await db.execute("UPDATE grupos_pwc SET di = di + 1, saldo = saldo - ? WHERE pais = ?", (scoreB - scoreA, timeA))
-            else:
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, vi = vi + 1 WHERE pais = ?", (timeA,))
-                await db.execute("UPDATE grupos_pwc SET pontos = pontos + 1, di = di + 1 WHERE pais = ?", (timeB,))
-
-        await db.commit()
-    await ctx.send(f"❌ Rodada {rodada} removida e tabela recalculada.")
-
-DB = "divulgacao.db"
-STAFF_ROLE_ID = 1382505875549323349
-TICKET_CATEGORY_ID = 1382838633094053933  # Coloque o ID correto da categoria Tickets
-CANAL_DIVULGACAO_ID = 1382838641482530938  # Canal onde o bot vai postar aviso de vídeo novo
-
-async def init_db():
-    async with aiosqlite.connect(DB) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS canais (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                plataforma TEXT,
-                link TEXT,
-                texto_novo TEXT,
-                ultimo_video_link TEXT
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS tickets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                canal_id INTEGER,
-                usuario_id INTEGER,
-                aberto INTEGER DEFAULT 1
-            )
-        """)
-        await db.commit()
-
-class CancelarCanalView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="❌ Cancelar canal", style=discord.ButtonStyle.danger, custom_id="cancelar_canal")
-    async def cancelar(self, interaction: discord.Interaction, button: Button):
-        if not interaction.channel.name.startswith("ticket-"):
-            await interaction.response.send_message("Esse botão só funciona dentro de um canal de ticket.", ephemeral=True)
-            return
-        await interaction.response.send_message("Canal de ticket encerrado.", ephemeral=True)
-        await interaction.channel.delete()
-
-class AprovarCanalView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="✅ Aprovar canal", style=discord.ButtonStyle.success, custom_id="aprovar_canal")
-    async def aprovar(self, interaction: discord.Interaction, button: Button):
-        if STAFF_ROLE_ID not in [role.id for role in interaction.user.roles]:
-            await interaction.response.send_message("Apenas membros da staff podem usar esse botão.", ephemeral=True)
-            return
-        if not interaction.channel.name.startswith("ticket-"):
-            await interaction.response.send_message("Esse botão só funciona dentro de um canal de ticket.", ephemeral=True)
-            return
-        
-        def check(m):
-            return m.channel == interaction.channel and m.author == interaction.user
-
-        await interaction.response.send_message("Vamos registrar o canal para divulgação. Responda as perguntas aqui mesmo:", ephemeral=True)
-        
-        try:
-            await interaction.channel.send("1️⃣ Qual a plataforma do canal? (youtube, tiktok, instagram)")
-            plataforma_msg = await bot.wait_for('message', check=check, timeout=120)
-            plataforma = plataforma_msg.content.lower()
-
-            await interaction.channel.send("2️⃣ Qual o link do canal ou RSS?")
-            link_msg = await bot.wait_for('message', check=check, timeout=120)
-            link = link_msg.content
-
-            await interaction.channel.send("3️⃣ Qual o texto que deve aparecer no aviso de vídeo novo?")
-            texto_msg = await bot.wait_for('message', check=check, timeout=120)
-            texto = texto_msg.content
-
-            async with aiosqlite.connect(DB) as db:
-                await db.execute(
-                    "INSERT INTO canais (plataforma, link, texto_novo) VALUES (?, ?, ?)",
-                    (plataforma, link, texto)
-                )
-                await db.commit()
-
-            await interaction.channel.send(f"Canal `{plataforma}` adicionado com sucesso para divulgação!")
-            
-            # Fecha o ticket após aprovar
-            await asyncio.sleep(5)
-            await interaction.channel.delete()
-
-        except asyncio.TimeoutError:
-            await interaction.channel.send("Tempo esgotado para responder. Tente aprovar o canal novamente.")
-
-@bot.event
-async def on_ready():
-    print(f"Bot online como {bot.user}")
-    await init_db()
-    bot.add_view(CancelarCanalView())
-    bot.add_view(AprovarCanalView())
-    checar_videos.start()
+    del data["resultados"][str(rodada)]
+    atualiza_tabela(data)
+    save_data(data)
+    await ctx.send(f"Resultados da rodada {rodada} deletados e tabela atualizada.")
 
 @bot.command()
-async def inscrever(ctx):
-    guild = ctx.guild
-    categoria_tickets = guild.get_channel(TICKET_CATEGORY_ID)
-    if not categoria_tickets:
-        categoria_tickets = await guild.create_category("Tickets")
+@has_role_id(ROLE_ID)
+async def tabela(ctx):
+    data = load_data()
+    selecoes = data.get("selecoes", [])
+    tabela = data.get("tabela", {})
 
-    nome_ticket = f"ticket-{ctx.author.name}".lower()
+    if not tabela:
+        tabela = {s: {"pontos":0, "vitorias":0, "empates":0, "derrotas":0, "saldo":0} for s in selecoes}
 
-    for canal in categoria_tickets.channels:
-        if canal.name == nome_ticket:
-            await ctx.send(f"Você já tem um ticket aberto: {canal.mention}")
-            return
-
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        guild.get_role(STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-    }
-
-    ticket = await guild.create_text_channel(nome_ticket, category=categoria_tickets, overwrites=overwrites)
-
-    embed = discord.Embed(
-        title="📩 Inscrição de Canal para Divulgação",
-        description=(
-            f"{ctx.author.mention}, use este canal para enviar o seu canal para aprovação da staff.\n\n"
-            "Clique no botão **Aprovar canal** para iniciar o registro.\n"
-            "Se quiser cancelar o pedido, clique em **Cancelar canal**."
-        ),
-        color=0x2ecc71
+    sorted_teams = sorted(
+        tabela.items(),
+        key=lambda item: (item[1]["pontos"], item[1]["saldo"], item[1]["vitorias"]),
+        reverse=True
     )
-    embed.set_footer(text="Equipe de Divulgação")
 
-    await ticket.send(content=ctx.author.mention, embed=embed, view=View())
-    await ticket.send(view=AprovarCanalView())
-    await ticket.send(view=CancelarCanalView())
-    await ctx.send(f"✅ Ticket criado com sucesso: {ticket.mention}")
+    max_len_nome = max(len(time) for time, _ in sorted_teams)
+    col_width = int(max_len_nome * 1.1)
 
-@bot.command()
-async def canais(ctx):
-    async with aiosqlite.connect(DB) as db:
-        cursor = await db.execute("SELECT id, plataforma, link FROM canais")
-        canais = await cursor.fetchall()
-        if not canais:
-            await ctx.send("Nenhum canal cadastrado.")
-            return
+    header = f"{'Pos':>4}  {'Seleção':<{col_width}}  {'Pts':>3}  {'VI':>2}  {'DI':>2}  {'Saldo':>5}  {'Emp':>3}"
+    linhas = [header]
+    linhas.append("-" * len(header))
 
-        embed = discord.Embed(title="Canais de Divulgação", color=0x00FF00)
-        for cid, plataforma, link in canais:
-            embed.add_field(name=f"[{plataforma}]", value=link, inline=False)
-        await ctx.send(embed=embed)
+    for pos, (time, stats) in enumerate(sorted_teams, start=1):
+        pos_str = numero_ordinal(pos)
+        linha = (
+            f"{pos_str:>4}  "
+            f"{time:<{col_width}}  "
+            f"{stats['pontos']:>3}  "
+            f"{stats['vitorias']:>2}  "
+            f"{stats['derrotas']:>2}  "
+            f"{stats['saldo']:>5}  "
+            f"{stats['empates']:>3}"
+        )
+        linhas.append(linha)
 
-@tasks.loop(minutes=5)
-async def checar_videos():
-    await bot.wait_until_ready()
+    tabela_texto = "\n".join(linhas)
+    legenda = (
+        "📊 Legenda:\n"
+        "Pts = Pontos\n"
+        "VI  = Vitórias Individuais\n"
+        "DI  = Derrotas Individuais\n"
+        "Saldo = VI - DI\n"
+        "Emp = Empates"
+    )
 
-    async with aiosqlite.connect(DB) as db:
-        cursor = await db.execute("SELECT id, plataforma, link, texto_novo, ultimo_video_link FROM canais WHERE plataforma = 'youtube'")
-        canais = await cursor.fetchall()
+    embed = discord.Embed(title="🏆 Tabela Copa PWC 25 - Fase de Liga 🏆", color=0x00FF00)
+    embed.add_field(name="Classificação", value=f"```fix\n{tabela_texto}\n```", inline=False)
+    embed.add_field(name="Legenda", value=legenda, inline=False)
 
-    canal_divulgacao = bot.get_channel(CANAL_DIVULGACAO_ID)
-    if not canal_divulgacao:
-        print("Canal de divulgação não encontrado.")
-        return
-
-    for cid, plataforma, link, texto_novo, ultimo_video_link in canais:
-        try:
-            feed = feedparser.parse(link)
-            if not feed.entries:
-                continue
-            novo_video = feed.entries[0]
-            video_link = novo_video.link
-
-            if video_link != ultimo_video_link:
-                embed = discord.Embed(
-                    title="Novo vídeo postado!",
-                    description=texto_novo,
-                    color=0xFF0000,
-                    url=video_link
-                )
-                thumb_url = None
-                if hasattr(novo_video, 'media_thumbnail'):
-                    thumb_url = novo_video.media_thumbnail[0]['url']
-                if thumb_url:
-                    embed.set_thumbnail(url=thumb_url)
-                embed.add_field(name="Assista aqui:", value=video_link, inline=False)
-
-                await canal_divulgacao.send(embed=embed)
-
-                async with aiosqlite.connect(DB) as db:
-                    await db.execute("UPDATE canais SET ultimo_video_link = ? WHERE id = ?", (video_link, cid))
-                    await db.commit()
-
-        except Exception as e:
-            print(f"Erro ao checar canal {cid}: {e}")
+    await ctx.send(embed=embed)
 
 cargo_mod1 = 1382505875549323349
 cargo_mod2 = 1382838597790470337
@@ -1184,29 +950,6 @@ async def mods(ctx):
     await ctx.send(embed=embed)
 
 @bot.command()
-async def traduzir(ctx, de: str = None, para: str = None):
-    if not ctx.message.reference:
-        return await ctx.send("❌ Você precisa responder a uma mensagem para traduzir.")
-
-    if not de or not para:
-        return await ctx.send("❌ Use: `!traduzir <de> <para>`\nExemplo: `!traduzir pt en` para traduzir do português para o inglês.")
-
-    try:
-        msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        texto = msg.content
-
-        resultado = translator.translate(texto, src=de, dest=para)
-        embed = discord.Embed(
-            title="🌍 Tradução",
-            description=f"**Original:** `{de}` → `{para}`\n{resultado.text}",
-            color=discord.Color.blue()
-        )
-        await ctx.send(embed=embed)
-    except Exception as e:
-        await ctx.send("❌ Erro ao traduzir. Verifique os códigos de idioma (pt, en, es, etc).")
-        print(f"Erro ao traduzir: {e}")
-
-@bot.command()
 async def ajuda(ctx):
     cargo_membro = 1382505877790470337
     cargo_membro_geral = 1382505875549323346
@@ -1269,4 +1012,4 @@ async def ajuda(ctx):
     await ctx.send(embed=embed)
 
 keep_alive()
-bot.run(os.getenv("TOKE"))
+bot.run(os.getenv("TOKEN"))

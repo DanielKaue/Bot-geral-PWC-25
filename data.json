@@ -1,0 +1,171 @@
+{
+    "selecoes": [
+        "Brasil",
+        "Fran\u00e7a",
+        "Portugal",
+        "Holanda",
+        "Espanha",
+        "EUA",
+        "Alemanha",
+        "Pol\u00f4nia",
+        "Argentina",
+        "Marrocos",
+        "Jap\u00e3o",
+        "Inglaterra",
+        "Austr\u00e1lia",
+        "Cro\u00e1cia",
+        "Uruguai",
+        "Senegal"
+    ],
+    "rodadas": {
+        "1": [
+            {
+                "time1": "Fran\u00e7a",
+                "time2": "Austr\u00e1lia"
+            },
+            {
+                "time1": "Portugal",
+                "time2": "Holanda"
+            },
+            {
+                "time1": "Espanha",
+                "time2": "EUA"
+            },
+            {
+                "time1": "Brasil",
+                "time2": "Cro\u00e1cia"
+            },
+            {
+                "time1": "Uruguai",
+                "time2": "Senegal"
+            },
+            {
+                "time1": "Jap\u00e3o",
+                "time2": "Inglaterra"
+            },
+            {
+                "time1": "Alemanha",
+                "time2": "Pol\u00f4nia"
+            },
+            {
+                "time1": "Argentina",
+                "time2": "Marrocos"
+            }
+        ]
+    },
+    "resultados": {},
+    "tabela": {
+        "Brasil": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Fran\u00e7a": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Portugal": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Holanda": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Espanha": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "EUA": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Alemanha": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Pol\u00f4nia": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Argentina": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Marrocos": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Jap\u00e3o": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Inglaterra": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Austr\u00e1lia": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Cro\u00e1cia": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Uruguai": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        },
+        "Senegal": {
+            "pontos": 0,
+            "vitorias": 0,
+            "empates": 0,
+            "derrotas": 0,
+            "saldo": 0
+        }
+    }
+}
