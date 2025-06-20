@@ -38,33 +38,27 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 DB_PATH = "pwc_tabela.db"
-MOD_ROLE_ID = 138250587554932334  # ID do cargo moderador
+MOD_ROLE_ID = 138250587554932334  # substitua com o ID correto
 
-PAISES = sorted([
-    ("🇩🇪", "Alemanha"), ("🇦🇷", "Argentina"), ("🇦🇺", "Austrália"), ("🇧🇷", "Brasil"),
-    ("🇭🇷", "Croácia"), ("🇪🇸", "Espanha"), ("🇺🇸", "EUA"), ("🇫🇷", "França"),
-    ("🇳🇱", "Holanda"), ("🏴", "Inglaterra"), ("🇯🇵", "Japão"), ("🇲🇦", "Marrocos"),
-    ("🇵🇱", "Polônia"), ("🇵🇹", "Portugal"), ("🇸🇳", "Senegal"), ("🇺🇾", "Uruguai")
-], key=lambda x: x[1])
+PAISES = [
+    ("Argentina", "🇦🇷"), ("Austrália", "🇦🇺"), ("Brasil", "🇧🇷"), ("Alemanha", "🇩🇪"),
+    ("Espanha", "🇪🇸"), ("França", "🇫🇷"), ("Croácia", "🇭🇷"), ("Japão", "🇯🇵"),
+    ("Marrocos", "🇲🇦"), ("Holanda", "🇳🇱"), ("Polônia", "🇵🇱"), ("Portugal", "🇵🇹"),
+    ("Senegal", "🇸🇳"), ("EUA", "🇺🇸"), ("Uruguai", "🇺🇾"), ("Inglaterra", "🏴")
+]
 
 RODADAS = {
-    1: [("França", "Austrália"), ("Portugal", "Holanda"), ("Espanha", "EUA"), ("Brasil", "Croácia"),
-        ("Uruguai", "Senegal"), ("Japão", "Inglaterra"), ("Alemanha", "Polônia"), ("Argentina", "Marrocos")],
-    2: [("Alemanha", "Austrália"), ("Portugal", "Croácia"), ("Polônia", "Senegal"), ("Espanha", "Holanda"),
-        ("Japão", "Marrocos"), ("Argentina", "França"), ("Brasil", "Uruguai"), ("Inglaterra", "EUA")],
-    3: [("França", "Senegal"), ("Brasil", "Austrália"), ("Argentina", "EUA"), ("Espanha", "Inglaterra"),
-        ("Uruguai", "Marrocos"), ("Japão", "Holanda"), ("Portugal", "Polônia"), ("Alemanha", "Croácia")],
-    4: [("Uruguai", "EUA"), ("Polônia", "Marrocos"), ("Japão", "Croácia"), ("Portugal", "Senegal"),
-        ("França", "Inglaterra"), ("Argentina", "Austrália"), ("Brasil", "Alemanha")],
-    5: [("Marrocos", "EUA"), ("Argentina", "Croácia"), ("Japão", "Espanha"), ("Uruguai", "Inglaterra"),
-        ("Brasil", "Polônia"), ("Alemanha", "Senegal"), ("Holanda", "Austrália"), ("França", "Portugal")],
-    6: [("Inglaterra", "Croácia"), ("Brasil", "Holanda"), ("Alemanha", "EUA"), ("França", "Polônia"),
-        ("Argentina", "Uruguai"), ("Japão", "Austrália"), ("Portugal", "Marrocos"), ("Espanha", "Senegal")]
+    1: [("França", "Austrália"), ("Portugal", "Holanda"), ("Espanha", "EUA"), ("Brasil", "Croácia"), ("Uruguai", "Senegal"), ("Japão", "Inglaterra"), ("Alemanha", "Polônia"), ("Argentina", "Marrocos")],
+    2: [("Alemanha", "Austrália"), ("Portugal", "Croácia"), ("Polônia", "Senegal"), ("Espanha", "Holanda"), ("Japão", "Marrocos"), ("Argentina", "França"), ("Brasil", "Uruguai"), ("Inglaterra", "EUA")],
+    3: [("França", "Senegal"), ("Brasil", "Austrália"), ("Argentina", "EUA"), ("Espanha", "Inglaterra"), ("Uruguai", "Marrocos"), ("Japão", "Holanda"), ("Portugal", "Polônia"), ("Alemanha", "Croácia")],
+    4: [("Uruguai", "EUA"), ("Polônia", "Marrocos"), ("Japão", "Croácia"), ("Portugal", "Senegal"), ("França", "Inglaterra"), ("Argentina", "Austrália"), ("Brasil", "Alemanha")],
+    5: [("Marrocos", "EUA"), ("Argentina", "Croácia"), ("Japão", "Espanha"), ("Uruguai", "Inglaterra"), ("Brasil", "Polônia"), ("Alemanha", "Senegal"), ("Holanda", "Austrália"), ("França", "Portugal")],
+    6: [("Inglaterra", "Croácia"), ("Brasil", "Holanda"), ("Alemanha", "EUA"), ("França", "Polônia"), ("Argentina", "Uruguai"), ("Japão", "Austrália"), ("Portugal", "Marrocos"), ("Espanha", "Senegal")]
 }
 
-def get_emoji(pais_nome):
-    for emoji, nome in PAISES:
-        if nome == pais_nome:
+def get_emoji(pais):
+    for nome, emoji in PAISES:
+        if nome == pais:
             return emoji
     return ""
 
@@ -74,7 +68,6 @@ async def on_ready():
         await db.execute("""
             CREATE TABLE IF NOT EXISTS grupos_pwc (
                 pais TEXT PRIMARY KEY,
-                emoji TEXT,
                 jogos INTEGER DEFAULT 0,
                 pontos INTEGER DEFAULT 0,
                 vi INTEGER DEFAULT 0,
@@ -87,19 +80,28 @@ async def on_ready():
                 rodada INTEGER PRIMARY KEY
             )
         """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS resultados (
-                rodada INTEGER,
-                timeA TEXT,
-                timeB TEXT,
-                scoreA INTEGER,
-                scoreB INTEGER
-            )
-        """)
-        for _, pais in PAISES:
-            await db.execute("INSERT OR IGNORE INTO grupos_pwc (pais, emoji) VALUES (?, ?)", (pais, get_emoji(pais)))
+        for nome, _ in PAISES:
+            await db.execute("INSERT OR IGNORE INTO grupos_pwc (pais) VALUES (?)", (nome,))
         await db.commit()
-    print(f"✅ Bot online como {bot.user}")
+    print("Bot pronto e tabelas garantidas!")
+
+@bot.command()
+async def tabela(ctx):
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("""
+            SELECT pais, jogos, pontos, vi, di, saldo
+            FROM grupos_pwc
+            ORDER BY pontos DESC, saldo DESC, vi DESC
+        """)
+        rows = await cursor.fetchall()
+
+    msg = "🏆 **Tabela da Fase de Grupos – PWC 25**\n"
+    for row in rows:
+        nome, jogos, pontos, vi, di, saldo = row
+        emoji = get_emoji(nome)
+        msg += f"\n{emoji} {nome}\n📊 Jogos: {jogos} | Pontos: {pontos} | ✅ VI: {vi} | ❌ DI: {di} | ⚖️ Saldo: {saldo}\n"
+
+    await ctx.send(msg)
 
 @bot.command()
 @commands.has_role(MOD_ROLE_ID)
@@ -165,25 +167,6 @@ async def jogos(ctx, rodada: int):
         await db.commit()
 
     await canal.send("✅ Resultados registrados com sucesso!")
-
-@bot.command()
-async def tabela(ctx):
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute("""
-            SELECT pais, emoji, jogos, pontos, vi, di, saldo
-            FROM grupos_pwc
-            ORDER BY pontos DESC, saldo DESC, vi DESC
-        """)
-        dados = await cursor.fetchall()
-
-    embed = discord.Embed(title="🏆 Tabela da Fase de Grupos – PWC 25", color=discord.Color.gold())
-    for pais, emoji, jogos, pontos, vi, di, saldo in dados:
-        embed.add_field(
-            name=f"{emoji} {pais}",
-            value=f"📊 Jogos: `{jogos}` | Pontos: `{pontos}` | ✅ VI: `{vi}` | ❌ DI: `{di}` | ⚖️ Saldo: `{saldo}`",
-            inline=False
-        )
-    await ctx.send(embed=embed)
 
 @bot.command()
 @commands.has_role(MOD_ROLE_ID)
