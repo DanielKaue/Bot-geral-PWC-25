@@ -42,12 +42,96 @@ MOD_ROLE_ID = 138250587554932334
 
 DB_PATH = "pwc.db"
 
+RODADAS = {
+    1: [
+        ("França", "Austrália"),
+        ("Portugal", "Holanda"),
+        ("Espanha", "EUA"),
+        ("Brasil", "Croácia"),
+        ("Uruguai", "Senegal"),
+        ("Japão", "Inglaterra"),
+        ("Alemanha", "Polônia"),
+        ("Argentina", "Marrocos")
+    ],
+    2: [
+        ("Alemanha", "Austrália"),
+        ("Portugal", "Croácia"),
+        ("Polônia", "Senegal"),
+        ("Espanha", "Holanda"),
+        ("Japão", "Marrocos"),
+        ("Argentina", "França"),
+        ("Brasil", "Uruguai"),
+        ("Inglaterra", "EUA")
+    ],
+    3: [
+        ("França", "Senegal"),
+        ("Brasil", "Austrália"),
+        ("Argentina", "EUA"),
+        ("Espanha", "Inglaterra"),
+        ("Uruguai", "Marrocos"),
+        ("Japão", "Holanda"),
+        ("Portugal", "Polônia"),
+        ("Alemanha", "Croácia")
+    ],
+    4: [
+        ("Uruguai", "EUA"),
+        ("Polônia", "Marrocos"),
+        ("Japão", "Croácia"),
+        ("Portugal", "Senegal"),
+        ("França", "Inglaterra"),
+        ("Argentina", "Austrália"),
+        ("Brasil", "Alemanha")
+    ],
+    5: [
+        ("Marrocos", "EUA"),
+        ("Argentina", "Croácia"),
+        ("Japão", "Espanha"),
+        ("Uruguai", "Inglaterra"),
+        ("Brasil", "Polônia"),
+        ("Alemanha", "Senegal"),
+        ("Holanda", "Austrália"),
+        ("França", "Portugal")
+    ],
+    6: [
+        ("Inglaterra", "Croácia"),
+        ("Brasil", "Holanda"),
+        ("Alemanha", "EUA"),
+        ("França", "Polônia"),
+        ("Argentina", "Uruguai"),
+        ("Japão", "Austrália"),
+        ("Portugal", "Marrocos"),
+        ("Espanha", "Senegal")
+    ]
+}
+
 PAISES = {
     "Argentina": "🇦🇷", "Austrália": "🇦🇺", "Brasil": "🇧🇷", "Alemanha": "🇩🇪",
     "Espanha": "🇪🇸", "França": "🇫🇷", "Croácia": "🇭🇷", "Japão": "🇯🇵",
     "Marrocos": "🇲🇦", "Holanda": "🇳🇱", "Polônia": "🇵🇱", "Portugal": "🇵🇹",
     "Senegal": "🇸🇳", "EUA": "🇺🇸", "Uruguai": "🇺🇾", "Inglaterra": "🏴"
 }
+
+def get_emoji(pais):
+    emojis = {
+        "Argentina": "🇦🇷",
+        "Austrália": "🇦🇺",
+        "Brasil": "🇧🇷",
+        "Alemanha": "🇩🇪",
+        "Espanha": "🇪🇸",
+        "França": "🇫🇷",
+        "Croácia": "🇭🇷",
+        "Japão": "🇯🇵",
+        "Marrocos": "🇲🇦",
+        "Holanda": "🇳🇱",
+        "Polônia": "🇵🇱",
+        "Portugal": "🇵🇹",
+        "Senegal": "🇸🇳",
+        "EUA": "🇺🇸",
+        "Uruguai": "🇺🇾",
+        "Inglaterra": "🏴"
+    }
+    return emojis.get(pais, "🏳️") 
+
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
