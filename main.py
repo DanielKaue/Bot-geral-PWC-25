@@ -39,6 +39,20 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+if not hasattr(bot, "reacao_paises_usuarios"):
+    bot.reacao_paises_usuarios = {}
+
+if not hasattr(bot, "reacao_paises_user_reacao"):
+    bot.reacao_paises_user_reacao = {}
+
+if not hasattr(bot, "reacao_paises_map"):
+    bot.reacao_paises_map = {}
+
+if not hasattr(bot, "reacao_paises_msg_id"):
+    bot.reacao_paises_msg_id = None
+
+
+
 def load_data():
     if not os.path.exists(DATA_FILE):
         initial_data = {
