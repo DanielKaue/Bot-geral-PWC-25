@@ -957,11 +957,11 @@ async def regrasdc(ctx):
 @bot.command()
 async def mods(ctx):
     await ctx.send("📦 Aqui estão os mods do servidor:", files=[
-        discord.File("c:\Users\dinos\Documents\Pixelmon World Cup - 2025\Mods\CustomNPCs-1.16.5.20220515.jar"),
-        discord.File("c:\Users\dinos\Documents\Pixelmon World Cup - 2025\Mods\customquests-1.16.5-2.1.1.jar"),
-        discord.File("c:\Users\dinos\Documents\Pixelmon World Cup - 2025\Mods\journeymap-1.16.5-5.7.1.jar"),
-        discord.File("c:\Users\dinos\Documents\Pixelmon World Cup - 2025\Mods\Pixelmon-1.16.5-9.1.12-universal.jar"),
-        discord.File("c:\Users\dinos\Documents\Pixelmon World Cup - 2025\Mods\voicechat-1.16.5-1.3.8.jar"),
+        discord.File(r"c:\Users\dinos\Documents\Pixelmon World Cup - 2025\Mods\CustomNPCs-1.16.5.20220515.jar"),
+        discord.File(r"c:\Users\dinos\Documents\Pixelmon World Cup - 2025\Mods\customquests-1.16.5-2.1.1.jar"),
+        discord.File(r"c:\Users\dinos\Documents\Pixelmon World Cup - 2025\Mods\journeymap-1.16.5-5.7.1.jar"),
+        discord.File(r"c:\Users\dinos\Documents\Pixelmon World Cup - 2025\Mods\Pixelmon-1.16.5-9.1.12-universal.jar"),
+        discord.File(r"c:\Users\dinos\Documents\Pixelmon World Cup - 2025\Mods\voicechat-1.16.5-1.3.8.jar"),
     ])
 
 
