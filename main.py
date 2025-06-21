@@ -36,7 +36,11 @@ ROLE_ID = 1382505875549323349
 
 intents = discord.Intents.all()
 intents = discord.Intents.default()
-intents.message_content = True
+intents = discord.Intents.default()
+intents.message_content = True  
+intents.members = True          
+intents.guilds = True
+intents.reactions = True        
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 if not hasattr(bot, "reacao_paises_usuarios"):
